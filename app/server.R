@@ -205,14 +205,14 @@ shinyServer(function(input, output, session) {
       facet_grid(ID~Experiment, scales = "free") + 
       theme_bw() + ggtitle("vHC") + 
       theme(legend.position = "top", legend.title = element_blank() ,axis.text.x = element_text(angle = 45, hjust = 1)) + 
-      scale_color_manual(values = c("#441C53","#25A885","#81C456","#F8E716","#24798F")) +
+      scale_color_manual(values = c("#441C53","#24798F","#25A885","#81C456","#F8E716")) +
       ylab(yaxname)
     
     p3 <- ggplot(cdat[cdat$Region == "dHC",],aes(TimePoint,vsn, color = TimePoint)) +
       facet_grid(ID~Experiment, scales = "free") + 
       theme_bw() + ggtitle("dHC") + 
       theme(legend.position = "top", legend.title = element_blank(),axis.text.x = element_text(angle = 45, hjust = 1)) + 
-      scale_color_manual(values = c("#441C53","#25A885","#81C456","#F8E716","#24798F")) +
+      scale_color_manual(values = c("#441C53","#24798F","#25A885","#81C456","#F8E716")) +
       ylab(yaxname)
     
     
