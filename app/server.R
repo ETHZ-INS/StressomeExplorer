@@ -248,7 +248,7 @@ shinyServer(function(input, output, session) {
     subset <- prot[which(rowData(prot)$Genes == input$gene_input),]
     
     if(nrow(subset) == 1){
-    cdat <- SEtools::meltSE(data,names(subset),assayName=intersect(c("lognorm.imputed","lognorm","intensity"), assayNames(data))[2])
+    cdat <- SEtools::meltSE(subset,names(subset),assayName=intersect(c("lognorm.imputed","lognorm","intensity"), assayNames(subset))[2])
     cdat$Condition <- ifelse(cdat$Condition == "Swim","Swim 4h", "Homecage")
     
     if(input$select_logaxis){
