@@ -161,19 +161,24 @@ shinyServer(function(input, output, session) {
     rowData(subset)$pepNr <- paste("Pep_", 1:nrow(subset),sep = "")
     rowData(subset)$pepNr <- factor(rowData(subset)$pepNr, levels = rowData(subset)$pepNr)
     rdat <- rowData(subset)
-    pepdats <- NULL
-    for(i in rownames(rdat)){
-      sq <- as.character(rdat[i,"StrippedSequence"])
-      po <- rdat[i,"EarliestPos"]:(rdat[i,"EarliestPos"]+nchar(sq) - 1)
-      prob <- rep(0,nchar(sq))
-      if(rdat[i,"Probabilities"] != ""){
-        anot <- as.numeric(unlist(strsplit(as.character(rdat[i,"Positions"]), split = ";")))
-        anotprob <- as.numeric(unlist(strsplit(as.character(rdat[i,"Probabilities"]), split = ";")))
-        prob[anot] <- anotprob
-      }
-      pepdats <- rbind(pepdats, data.frame(ID = rdat[i,"pepNr"], name = i, AA = unlist(strsplit(sq, split = "")), Position = po, Probability = prob))
-    }
 
+    sq <- as.character(rdat$StrippedSequence)
+    pos <- lapply(strsplit(as.character(rdat$Positions),";"), as.integer)
+    probs <- mapply(ep=rdat$EarliestPos, nc=nchar(sq), pos=pos,
+           prob=strsplit(as.character(rdat$Probabilities), ";"),
+           FUN=function(ep,nc,pos,prob){
+             p <- rep(0,nc)
+             p[as.integer(pos)] <- as.numeric(prob)
+             p
+           })
+    pepdats <- data.frame(
+      ID=rep(rdat$pepNr, lengths(probs)),
+      name=rep(rdat$name, lengths(probs)),
+      AA=unlist(strsplit(sq,"")),
+      Position=unlist(mapply(a=as.integer(rdat$EarliestPos),
+                             b=lengths(probs), FUN=function(a,b) a:(a+b-1))),
+      Probability=unlist(probs)
+    )
 
     p0 <- ggplot(pepdats,aes(Position, "AA", color = "detected sequence")) +
       scale_color_manual(values = "darkolivegreen") +
@@ -248,7 +253,7 @@ shinyServer(function(input, output, session) {
     subset <- prot[which(rowData(prot)$Genes == input$gene_input),]
 
     if(nrow(subset) == 1){
-    cdat <- SEtools::meltSE(subset,row.names(subset),assayName=intersect(c("lognorm.imputed","lognorm","intensity"), assayNames(subset))[2])
+    cdat <- SEtools::meltSE(subset,names(subset),assayName=intersect(c("lognorm.imputed","lognorm","intensity"), assayNames(subset))[2])
     cdat$Condition <- ifelse(cdat$Condition == "Swim","Swim 4h", "Homecage")
 
     if(input$select_logaxis){
