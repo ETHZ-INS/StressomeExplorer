@@ -30,6 +30,43 @@ grepGene <- function(x,g){
   x[g,,drop=FALSE]
 }
 
+phosphoHeat <- function(subset, position_width=3, ...){
+  library(gridtext)
+  library(ComplexHeatmap)
+  subset <- subset[!grepl("Ambiguous",rowData(subset)$PhosphoSites),]
+  subset <- subset[order(rowData(subset)$EarliestPos),]
+  rdat <- rowData(subset)
+  sqs <- strsplit(as.character(rdat$StrippedSequence),"")
+  pos <- lapply(strsplit(as.character(rdat$Positions),";"), as.integer)
+  probs <- lapply(strsplit(as.character(rdat$Probabilities),";"), FUN=function(x){
+    as.integer(as.numeric(x)*100)
+  })
+  cols <- viridisLite::cividis(101)
+  sq <- mapply(s=sqs, po=pos, prob=probs, FUN=function( s, po, prob){
+    if(length(w <- which(prob>0))>0){
+      s[po[w]] <- paste0("<span style='color: ", cols[1L+prob[w]],"'>", s[po[w]], "</span>")
+    }
+    paste(s,collapse="")
+  })
+  m <- matrix(0L, ncol=max(rdat$EarliestPos+lengths(sqs)), nrow=length(sq))
+  for(i in seq_len(nrow(rdat))){
+    m[i,rdat$EarliestPos[i]:(rdat$EarliestPos[i]+length(sqs[[i]])-1)] <- 1L
+  }
+  h1 <- Heatmap(m, cluster_rows=FALSE, cluster_columns=FALSE,
+                col=c("lightgrey","darkblue"),
+                column_title="Position", show_heatmap_legend=FALSE,
+                heatmap_width=unit(position_width, "cm"))
+  ra <- rowAnnotation(text=anno_text(gt_render(sq), gp=gpar(fontfamily="mono", fontface="bold")))
+  h2 <- sechm(subset[,order(subset$TimePoint)], genes=row.names(subset), assayName="imputed",
+              do.scale=TRUE, gaps_at="Region", anno_columns="TimePoint",
+              show_rownames=FALSE, sortRowsOn=NULL, cluster_rows=FALSE,
+              right_annotation=ra, ...)
+  draw(h1+h2, annotation_legend_list = list(
+    Legend(col_fun=circlize::colorRamp2(breaks=c(0:100), colors=cols),
+           title = "Phosphorylation\nprobability", at=c(0,50,100))), merge_legends=TRUE)
+}
+
+
 shinyServer(function(input, output, session) {
   source("Login.R", local = TRUE)
   g <- sapply(strsplit(unlist(lapply(SEs, row.names)),".",fixed=T),FUN=function(x) x[1])
