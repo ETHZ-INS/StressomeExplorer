@@ -1,4 +1,4 @@
-# acuteStress
+# StressomeExplorer
 
 This app enables the inspection of raw data associated with the publication (REF) on a per gene basis.
 The user can input the name of a gene of interest and data across datasets will be presented in a intuitiv way.
