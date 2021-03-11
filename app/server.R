@@ -26,7 +26,7 @@ grepGene <- function(x,g){
   x[g,,drop=FALSE]
 }
 
-phosphoHeat <- function(subset, position_width=3, ...){
+phosphoHeat <- function(subset, position_width=3, assayName="vsn", ...){
   library(gridtext)
   library(ComplexHeatmap)
   subset <- subset[!grepl("Ambiguous",rowData(subset)$PhosphoSites),]
@@ -53,10 +53,10 @@ phosphoHeat <- function(subset, position_width=3, ...){
                 column_title="Position", show_heatmap_legend=FALSE,
                 heatmap_width=unit(position_width, "cm"))
   ra <- rowAnnotation(text=anno_text(gt_render(sq), gp=gpar(fontfamily="mono", fontface="bold")))
-  h2 <- sechm(subset[,order(subset$Region,subset$TimePoint)], genes=row.names(subset), assayName="imputed",
-              do.scale=TRUE, gaps_at=c("Experiment","Region"), anno_columns=c("TimePoint","Region"),
-              show_rownames=FALSE, sortRowsOn=NULL, cluster_rows=FALSE,
-              right_annotation=ra, ...)
+  h2 <- sechm(subset[,order(subset$Region,subset$TimePoint)], genes=row.names(subset),
+              do.scale=FALSE, gaps_at=c("Region"), anno_columns=c("TimePoint","Region"),
+              show_rownames=FALSE, sortRowsOn=NULL, cluster_rows=FALSE, assayName=assayName,
+              right_annotation=ra, breaks=0.99, ...)
   draw(h1+h2, annotation_legend_list = list(
     Legend(col_fun=circlize::colorRamp2(breaks=c(0:100), colors=cols),
            title = "Phosphorylation\nprobability", at=c(0,50,100))), merge_legends=TRUE)
@@ -194,7 +194,7 @@ shinyServer(function(input, output, session) {
       subset$TimePoint <- factor(subset$TimePoint, levels = c("0min","6min","15min","30min","45min"))
       ac <- list(TimePoint = c("0min"="#441C53","6min"="#24798F","15min"="#25A885","30min"="#81C456","45min"="#F8E716"),
                  Region = c("dHC"="#B29249","vHC"="#8A9DAF"))
-      phosphoHeat(subset, anno_colors = ac)
+      phosphoHeat(subset, anno_colors = ac, assayName=input$phos_assay)
     }
     else
     {
@@ -225,7 +225,7 @@ shinyServer(function(input, output, session) {
            })
     pepdats <- data.frame(
       ID=rep(rdat$pepNr, lengths(probs)),
-      name=rep(rdat$name, lengths(probs)),
+      name=rep(row.names(rdat), lengths(probs)),
       AA=unlist(strsplit(sq,"")),
       Position=unlist(mapply(a=as.integer(rdat$EarliestPos),
                              b=lengths(probs), FUN=function(a,b) a:(a+b-1))),

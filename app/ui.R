@@ -37,7 +37,9 @@ shinyUI( dashboardPage(
     ),
       tabItem("tab_prot",box(title = "Proteomic datasets", width=12, withSpinner(plotOutput("protplot_plot", width = 600, height = 800)))
     ),
-      tabItem("tab_phos",box(title = "Phosphoproteomic datasets",width=12, withSpinner(plotOutput("phospho_plot", width = 1000)))
+      tabItem("tab_phos",box(title = "Phosphoproteomic datasets", width=12,
+                             selectizeInput("phos_assay", "Assay", choices=c("scaledSVA","log2FC"), multiple=FALSE),
+                             withSpinner(plotOutput("phospho_plot", width = 1000)))
     ),
       tabItem("tab_phos_pep",box(title = "Peptide Explorer (warning: may be slow if protein has many peptides)", width=12,withSpinner(plotOutput("phospho_pep_plot", width = 1000)))
     ))
