@@ -30,18 +30,31 @@ shinyUI( dashboardPage(
         column(2, checkboxInput('select_logaxis','Logarithmic Axis', value=T)),
         column(2, checkboxInput('select_plotpoints','Plot Points', value=T)),
         column(5, htmlOutput("availability")),
-        box(title = "Transcriptome data (press + to view)", width=12, withSpinner(plotOutput("gene_plot", height=1200, width = 600)),collapsible = T, collapsed = T)
+        box(title = "Transcriptome data (press + to view)", width=8, withSpinner(plotOutput("gene_plot", height=1200, width = 600)),collapsible = T, collapsed = T),
+        box(title = "Experimental designs", width = 4, 
+            plotOutput("EDTS", height = "250px"),
+            plotOutput("FvM", height = "250px"),
+            plotOutput("LvR", height = "200px"),
+            plotOutput("CMV", height = "200px"),
+            plotOutput("TRAP", height = "300px"),
+            collapsible = T, collapsed = T)
     ),
       tabItem("tab_snrna",box(title="single-nucleus RNA-seq", width=12,
-                              withSpinner(plotOutput("snrna_plot", width=600, height=500)))
+                              withSpinner(plotOutput("snrna_plot", width=600, height=800)))
     ),
-      tabItem("tab_prot",box(title = "Proteomic datasets", width=12, withSpinner(plotOutput("protplot_plot", width = 600, height = 800)))
+    tabItem("tab_prot",
+            box(title = "Experimental design",width = 12,plotOutput("EDprot", height = "90px"),collapsible = T, collapsed = T),
+            box(title = "Proteomic datasets", width=12, withSpinner(plotOutput("protplot_plot", width = 600, height = 800)))
     ),
-      tabItem("tab_phos",box(title = "Phosphoproteomic datasets", width=12,
+      tabItem("tab_phos",
+              box(title = "Experimental design",width = 12,plotOutput("EDphos", height = "200px"),collapsible = T, collapsed = T),
+              box(title = "Phosphoproteomic datasets", width=12,
                              selectizeInput("phos_assay", "Assay", choices=c("scaledSVA","log2FC"), multiple=FALSE),
                              withSpinner(plotOutput("phospho_plot", width = 1000)))
     ),
-      tabItem("tab_phos_pep",box(title = "Peptide Explorer (warning: may be slow if protein has many peptides)", width=12,withSpinner(plotOutput("phospho_pep_plot", width = 1000)))
+      tabItem("tab_phos_pep",
+              box(title = "Experimental design",width = 12, plotOutput("EDphos2", height = "200px"),collapsible = T, collapsed = T),
+              box(title = "Peptide Explorer (warning: may be slow if protein has many peptides)", width=12,withSpinner(plotOutput("phospho_pep_plot", width = 1000)))
     ))
   )
 ))

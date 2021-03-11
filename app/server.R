@@ -74,17 +74,57 @@ shinyServer(function(input, output, session) {
   PlotHeight_Phospep <- reactive(
     return(100 +100 * sum(rowData(phos)$GeneSymbol == input$gene_input,na.rm = T))
   )
+  
+  ############
+  ### START Experimental design images
+  output$EDTS <- renderImage({
+    list(src = "../fig/Figure3A_EXPERIMENTALDESIGN.png",width = 290,
+         height = 190)
+  }, deleteFile = FALSE)
+  output$FvM <- renderImage({
+    list(src = "../fig/FigureFvM_EXPERIMENTALDESIGN.png",width = 380,
+         height = 100)
+  }, deleteFile = FALSE)
+  output$LvR <- renderImage({
+    list(src = "../fig/FigureLvR_EXPERIMENTALDESIGN.png",width = 400,
+         height = 80)
+  }, deleteFile = FALSE)
+  output$CMV <- renderImage({
+    list(src = "../fig/FigureCMV_EXPERIMENTALDESIGN.png",width = 170,
+         height = 80)
+  }, deleteFile = FALSE)
+  output$TRAP <- renderImage({
+    list(src = "../fig/FigureTRAPs_EXPERIMENTALDESIGN.png",width = 400,
+         height = 200)
+  }, deleteFile = FALSE)
+  output$EDphos <- renderImage({
+    list(src = "../fig/Figure2A_EXPERIMENTALDESIGN.png",width = 360,
+         height = 200)
+  }, deleteFile = FALSE)
+  output$EDphos2 <- renderImage({
+    list(src = "../fig/Figure2A_EXPERIMENTALDESIGN.png",width = 360,
+         height = 200)
+  }, deleteFile = FALSE)
+  output$EDprot <- renderImage({
+    list(src = "../fig/Figure7A_EXPERIMENTALDESIGN.png",width = 400,
+         height = 90)
+  }, deleteFile = FALSE)
+  
+  ### END Experimental design images
+  ############ 
 
   ############
   ### START GENE PLOT
   output$gene_name <- renderText({input$gene_input})
 
   output$availability <- renderText({
+    snRNAdat <- SEtools::meltSE(SN, input$gene_input, assayName="logcpm")
     s1 <- paste("<b>availablility of", input$gene_input,":</b>" , sep = " ")
-    s2 <- "Transcriptome data available! "
-    s3 <- ifelse(sum(rowData(prot)$Genes == input$gene_input, na.rm = T) > 0, "Proteome data available!", "no Proteome data available")
-    s4 <- ifelse(sum(rowData(phos)$GeneSymbol == input$gene_input, na.rm = T) > 0, "Phosphodata available!", "no Phosphodata available")
-    paste(s1,s2,s3,s4, sep = "<br/>")
+    s2 <- "<font color=\"#00CC00\">Transcriptome data</font>"
+    s3 <- ifelse(nrow(snRNAdat) > 0, "<font color=\"#00CC00\">snRNA data</font>", "<font color=\"#FF0000\">no snRNA data</font>")
+    s4 <- ifelse(sum(rowData(prot)$Genes == input$gene_input, na.rm = T) > 0, "<font color=\"#00CC00\">Proteome data</font>", "<font color=\"#FF0000\">no Proteome data</font>")
+    s5 <- ifelse(sum(rowData(phos)$GeneSymbol == input$gene_input, na.rm = T) > 0, "<font color=\"#00CC00\">Phospho data</font>", "<font color=\"#FF0000\">no Phospho data</font>")
+    paste(s1,s2,s3,s4,s5, sep = "<br/>")
   })
 
   output$gene_plot <- renderPlot({
@@ -352,11 +392,33 @@ shinyServer(function(input, output, session) {
 
   output$snrna_plot <- renderPlot({
     cdat <- SEtools::meltSE(SN, input$gene_input, assayName="logcpm")
+    if(nrow(cdat) > 0){
     levels(cdat$condition) <- c("Homecage", "Swim 45min")
-    ggplot(cdat, aes(condition, logcpm, fill=condition)) + geom_point() +
-      geom_boxplot() + facet_wrap(~cluster, scales="free_y") +
+    p1 <- ggplot(cdat, aes(cluster, logcpm, color = cluster)) + geom_point(position = position_jitterdodge()) +
+      theme_bw() +
       theme(legend.position="none") +
-      labs(x="", y="sctransform-normalized expression")
+      labs(x="", y="sctransform-normalized expression") +
+      ggtitle("Expression in cell types (pooled groups)")
+    p2 <- ggplot(cdat, aes(condition, logcpm, color=condition)) + geom_point(position = position_jitterdodge()) + facet_wrap(~cluster, scales="free_y") +
+      scale_color_manual(values = c("#441C53","#24798F")) +
+      theme_bw() +
+      theme(legend.position="none") +
+      labs(x="", y="sctransform-normalized expression") +
+      ggtitle("Expression after acute stress")
+    
+    if(input$select_plottype == "violin plot"){
+      p1 <- p1 + geom_violin()
+    }else if(input$select_plottype == "box plot"){
+      p1 <- p1+ geom_boxplot(outlier.shape = NA)
+    }
+    if(input$select_plotpoints){
+      p1 <-p1 + geom_point(position = position_jitterdodge())
+    }
+    
+    plot_grid(p1,p2,ncol = 1, rel_heights = c(1,3))
+    }else{
+      ggplot() + ggtitle(paste("No snRNA data for ", input$gene_input, sep = ""))
+    }
 
   })
 
