@@ -8,7 +8,13 @@ shinyUI( dashboardPage(
 
   dashboardHeader(title="stressome"),
   dashboardSidebar(
-    uiOutput("sidebarui")
+    sidebarMenu(
+      menuItem("Select Gene", tabName="tab_gene"),
+      menuItem("Single-nuclei", tabName="tab_snrna"),
+      menuItem("Proteome", tabName="tab_prot"),
+      menuItem("Phosphoproteome", tabName="tab_phos"),
+      menuItem("Phosphopeptides", tabName="tab_phos_pep")
+    )
   ),
   dashboardBody(
     tagList(
@@ -26,15 +32,14 @@ shinyUI( dashboardPage(
         column(5, htmlOutput("availability")),
         box(title = "Transcriptome data (press + to view)", width=12, withSpinner(plotOutput("gene_plot", height=1200, width = 600)),collapsible = T, collapsed = T)
     ),
+      tabItem("tab_snrna",box(title="single-nucleus RNA-seq", width=12,
+                              withSpinner(plotOutput("snrna_plot", width=600, height=500)))
+    ),
       tabItem("tab_prot",box(title = "Proteomic datasets", width=12, withSpinner(plotOutput("protplot_plot", width = 600, height = 800)))
     ),
       tabItem("tab_phos",box(title = "Phosphoproteomic datasets",width=12, withSpinner(plotOutput("phospho_plot", width = 1000)))
     ),
       tabItem("tab_phos_pep",box(title = "Peptide Explorer (warning: may be slow if protein has many peptides)", width=12,withSpinner(plotOutput("phospho_pep_plot", width = 1000)))
-    )),
-    div(class = "login",
-        uiOutput("uiLogin"),
-        textOutput("pass")
-    )
+    ))
   )
 ))

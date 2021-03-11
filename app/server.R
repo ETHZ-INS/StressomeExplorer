@@ -4,16 +4,12 @@ library(SEtools)
 library(ggplot2)
 library(cowplot)
 
-## Toggle this to enable/disable password protection
-Logged = TRUE;
-
-PASSWORD <- data.frame(username=c("gbohacek"),password=c("letmein"))
-
 ff <- list.files("../data/seq/", pattern="\\.SE\\.", full.names=TRUE)
 names(ff) <- gsub("\\.SE\\.rds","",basename(ff))
 SEs <- lapply(ff,FUN=readRDS)
 phos <- readRDS("../data/phos/PhosphoData.SE.rds")
 prot <- readRDS("../data/prot/4HFST_LFQ.SE.rds")
+SN <- readRDS("../data/snRNAseq/snRNAseq.SE.rds")
 
 tgl <- list()
 
@@ -68,22 +64,8 @@ phosphoHeat <- function(subset, position_width=3, ...){
 
 
 shinyServer(function(input, output, session) {
-  source("Login.R", local = TRUE)
   g <- sapply(strsplit(unlist(lapply(SEs, row.names)),".",fixed=T),FUN=function(x) x[1])
   updateSelectizeInput(session, "gene_input", choices=sort(unique(g)),selected = "Fos", server=T)
-
-  observe({
-    if (USER$Logged == TRUE) {
-      output$sidebarui <- renderUI(list(
-        sidebarMenu(
-          menuItem("Select Gene", tabName="tab_gene"),
-          menuItem("Proteome", tabName="tab_prot"),
-          menuItem("Phosphoproteome", tabName="tab_phos"),
-          menuItem("Phosphopeptides", tabName="tab_phos_pep")
-        )))
-      }
-    updateSelectInput(session, "select_datasets", choices=names(SEs))
-  })
 
   PlotHeight_Phos <- reactive(
     return(100 + 10 * sum(rowData(phos)$GeneSymbol == input$gene_input,na.rm = T))
@@ -367,5 +349,16 @@ shinyServer(function(input, output, session) {
   })
   ### END LFQ PLOT
   ############
+
+  output$snrna_plot <- renderPlot({
+    cdat <- SEtools::meltSE(SN, input$gene_input, assayName="logcpm")
+    levels(cdat$condition) <- c("Homecage", "Swim 45min")
+    ggplot(cdat, aes(condition, logcpm, fill=condition)) + geom_point() +
+      geom_boxplot() + facet_wrap(~cluster, scales="free_y") +
+      theme(legend.position="none") +
+      labs(x="", y="sctransform-normalized expression")
+
+  })
+
 })
 
