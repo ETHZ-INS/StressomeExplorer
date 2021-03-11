@@ -58,7 +58,7 @@ phosphoHeat <- function(subset, position_width=3, ...){
                 heatmap_width=unit(position_width, "cm"))
   ra <- rowAnnotation(text=anno_text(gt_render(sq), gp=gpar(fontfamily="mono", fontface="bold")))
   h2 <- sechm(subset[,order(subset$Region,subset$TimePoint)], genes=row.names(subset), assayName="imputed",
-              do.scale=TRUE, gaps_at=c("Experiment","Region"), anno_columns=c("TimePoint","Region"), anno_colors = list(TimePoint = c("#441C53","#24798F","#25A885","#81C456","#F8E716"), Region = c("#B29249","#8A9DAF")),
+              do.scale=TRUE, gaps_at=c("Experiment","Region"), anno_columns=c("TimePoint","Region"),
               show_rownames=FALSE, sortRowsOn=NULL, cluster_rows=FALSE,
               right_annotation=ra, ...)
   draw(h1+h2, annotation_legend_list = list(
@@ -88,7 +88,7 @@ shinyServer(function(input, output, session) {
   PlotHeight_Phos <- reactive(
     return(100 + 10 * sum(rowData(phos)$GeneSymbol == input$gene_input,na.rm = T))
   )
-  
+
   PlotHeight_Phospep <- reactive(
     return(100 +100 * sum(rowData(phos)$GeneSymbol == input$gene_input,na.rm = T))
   )
@@ -97,14 +97,14 @@ shinyServer(function(input, output, session) {
   ### START GENE PLOT
   output$gene_name <- renderText({input$gene_input})
 
-  output$availability <- renderText({ 
+  output$availability <- renderText({
     s1 <- paste("<b>availablility of", input$gene_input,":</b>" , sep = " ")
     s2 <- "Transcriptome data available! "
     s3 <- ifelse(sum(rowData(prot)$Genes == input$gene_input, na.rm = T) > 0, "Proteome data available!", "no Proteome data available")
     s4 <- ifelse(sum(rowData(phos)$GeneSymbol == input$gene_input, na.rm = T) > 0, "Phosphodata available!", "no Phosphodata available")
     paste(s1,s2,s3,s4, sep = "<br/>")
   })
-  
+
   output$gene_plot <- renderPlot({
     ll <- lapply(SEs, FUN=function(x){
       g <- row.names(grepGene(x,input$gene_input))
@@ -204,13 +204,15 @@ shinyServer(function(input, output, session) {
   ### PHOSPHOS PLOT
   ############
   output$phospho_plot <- renderPlot(height = function(){PlotHeight_Phos()},{
-    
+
     subset <- phos[which(rowData(phos)$GeneSymbol == input$gene_input),]
-    
+
     if(nrow(subset) > 0){
       subset <- subset[order(rowData(subset)$EarliestPos),]
       subset$TimePoint <- factor(subset$TimePoint, levels = c("0min","6min","15min","30min","45min"))
-      phosphoHeat(subset)
+      ac <- list(TimePoint = c("0min"="#441C53","6min"="#24798F","15min"="#25A885","30min"="#81C456","45min"="#F8E716"),
+                 Region = c("dHC"="#B29249","vHC"="#8A9DAF"))
+      phosphoHeat(subset, anno_colors = ac)
     }
     else
     {
@@ -218,7 +220,7 @@ shinyServer(function(input, output, session) {
       print(p1)
     }
   })
-  
+
   output$phospho_pep_plot <- renderPlot(height = function(){PlotHeight_Phospep()},{
 
     subset <- phos[which(rowData(phos)$GeneSymbol == input$gene_input),]
@@ -274,7 +276,7 @@ shinyServer(function(input, output, session) {
       yaxname <- "Intensity"
     }
 
-    
+
     p2 <- ggplot(cdat[cdat$Region == "vHC",],aes(TimePoint,vsn, color = TimePoint)) +
       facet_grid(ID~Experiment, scales = "free") +
       theme_bw() + ggtitle("vHC") +
