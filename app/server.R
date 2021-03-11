@@ -246,6 +246,11 @@ shinyServer(function(input, output, session) {
   output$phospho_pep_plot <- renderPlot(height = function(){PlotHeight_Phospep()},{
 
     subset <- phos[which(rowData(phos)$GeneSymbol == input$gene_input),]
+    
+    int_breaks <- function(x, n = 10) {
+      l <- pretty(x, n)
+      l[abs(l %% 1) < .Machine$double.eps ^ 0.5] 
+    }
 
     if(nrow(subset) > 0){
     subset <- subset[!grepl("Ambiguous",rowData(subset)$PhosphoSites),]
@@ -278,11 +283,12 @@ shinyServer(function(input, output, session) {
       ggtitle("Assay coverage") +
       theme_bw()
     p1 <- ggplot(pepdats,aes(Position, "AA", label = AA, color = Probability)) +
-      geom_text() +
+      geom_text(fontface='bold') +
       facet_wrap(~ID, scales = "free", ncol = 1) +
       theme_bw() +
       ylab("") +
-      scale_color_gradient(low = "black", high = "steelblue") +
+      scale_color_gradient(low = "#000033", high = "#FF9900") +
+      scale_x_continuous(breaks = int_breaks) +
       ggtitle("Phosphorylation Probabilities") +
       theme(legend.position="top")
 
