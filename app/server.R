@@ -4,12 +4,15 @@ library(SEtools)
 library(ggplot2)
 library(cowplot)
 
-ff <- list.files("../data/seq/", pattern="\\.SE\\.", full.names=TRUE)
+data_dir <- "../data"
+fig_dir <- "../fig"
+
+ff <- list.files(file.path(data_dir,"seq"), pattern="\\.SE\\.", full.names=TRUE)
 names(ff) <- gsub("\\.SE\\.rds","",basename(ff))
 SEs <- lapply(ff,FUN=readRDS)
-phos <- readRDS("../data/phos/PhosphoData.SE.rds")
-prot <- readRDS("../data/prot/4HFST_LFQ.SE.rds")
-SN <- readRDS("../data/snRNAseq/snRNAseq.SE.rds")
+phos <- readRDS(file.path(data_dir,"phos","PhosphoData.SE.rds"))
+prot <- readRDS(file.path(data_dir, "prot", "4HFST_LFQ.SE.rds"))
+SN <- readRDS(file.path(data_dir, "snRNAseq", "snRNAseq.SE.rds"))
 
 tgl <- list()
 
@@ -77,36 +80,36 @@ shinyServer(function(input, output, session) {
   
   ############
   ### START Experimental design images
-  output$EDTS <- renderImage({
-    list(src = "../fig/Figure3A_EXPERIMENTALDESIGN.png",width = 290,
+output$EDTS <- renderImage({
+    list(src = paste0(fig_dir,"/Figure3A_EXPERIMENTALDESIGN.png"),width = 290,
          height = 190)
   }, deleteFile = FALSE)
   output$FvM <- renderImage({
-    list(src = "../fig/FigureFvM_EXPERIMENTALDESIGN.png",width = 380,
+    list(src = paste0(fig_dir,"/FigureFvM_EXPERIMENTALDESIGN.png"),width = 380,
          height = 100)
   }, deleteFile = FALSE)
   output$LvR <- renderImage({
-    list(src = "../fig/FigureLvR_EXPERIMENTALDESIGN.png",width = 400,
+    list(src = paste0(fig_dir,"/FigureLvR_EXPERIMENTALDESIGN.png"),width = 400,
          height = 80)
   }, deleteFile = FALSE)
   output$CMV <- renderImage({
-    list(src = "../fig/FigureCMV_EXPERIMENTALDESIGN.png",width = 170,
+    list(src = paste0(fig_dir,"/FigureCMV_EXPERIMENTALDESIGN.png"),width = 170,
          height = 80)
   }, deleteFile = FALSE)
   output$TRAP <- renderImage({
-    list(src = "../fig/FigureTRAPs_EXPERIMENTALDESIGN.png",width = 400,
+    list(src = paste0(fig_dir,"/FigureTRAPs_EXPERIMENTALDESIGN.png"),width = 400,
          height = 200)
   }, deleteFile = FALSE)
   output$EDphos <- renderImage({
-    list(src = "../fig/Figure2A_EXPERIMENTALDESIGN.png",width = 360,
+    list(src = paste0(fig_dir,"/Figure2A_EXPERIMENTALDESIGN.png"),width = 360,
          height = 200)
   }, deleteFile = FALSE)
   output$EDphos2 <- renderImage({
-    list(src = "../fig/Figure2A_EXPERIMENTALDESIGN.png",width = 360,
+    list(src = paste0(fig_dir,"/Figure2A_EXPERIMENTALDESIGN.png"),width = 360,
          height = 200)
   }, deleteFile = FALSE)
   output$EDprot <- renderImage({
-    list(src = "../fig/Figure7A_EXPERIMENTALDESIGN.png",width = 400,
+    list(src = paste0(fig_dir,"/Figure7A_EXPERIMENTALDESIGN.png"),width = 400,
          height = 90)
   }, deleteFile = FALSE)
   
