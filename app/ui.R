@@ -13,14 +13,27 @@ shinyUI( dashboardPage(
       menuItem("Single-nuclei", tabName="tab_snrna"),
       menuItem("Proteome", tabName="tab_prot"),
       menuItem("Phosphoproteome", tabName="tab_phos"),
-      menuItem("Phosphopeptides", tabName="tab_phos_pep")
+      menuItem("Phosphopeptides", tabName="tab_phos_pep"),
+      tags$div(id="lablink", tags$a(href="https://bohaceklab.ethz.ch/", "bohaceklab.ethz.ch"))
     )
   ),
   dashboardBody(
     tagList(
       tags$head(
-        tags$link(rel="stylesheet", type="text/css", href=system.file("extdata/style.css", package="stressome")),
-        tags$style(".inlineInputs div { display:inline-block; }")
+        tags$style(".inlineInputs div { display:inline-block; }"),
+	tags$style(HTML('
+#lablink {
+  position: absolute;
+  bottom:2px;
+  left:8px;
+  font-size: 110%;
+  font-weight: bold;
+  text-decoration: none;
+}
+#lablink a:hover {
+  text-decoration: underline;
+}
+    '))
       )
     ),
     tabItems(
