@@ -250,7 +250,7 @@ output$EDTS <- renderImage({
     }
     else
     {
-      p1 <- ggplot() + ggtitle(paste("To phosphorylation data for ", input$gene_input, sep = "")) + theme_bw()
+      p1 <- ggplot() + ggtitle(paste("No phosphorylation data for ", input$gene_input, sep = "")) + theme_bw()
       print(p1)
     }
   })
