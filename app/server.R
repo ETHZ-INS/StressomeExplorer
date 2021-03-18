@@ -10,7 +10,7 @@ fig_dir <- "../fig"
 ff <- list.files(file.path(data_dir,"seq"), pattern="\\.SE\\.", full.names=TRUE)
 names(ff) <- gsub("\\.SE\\.rds","",basename(ff))
 SEs <- lapply(ff,FUN=readRDS)
-phos <- readRDS(file.path(data_dir,"phos","PhosphoData.SE.rds"))
+phos <- readRDS(file.path(data_dir,"phos","PhosphoData_RMAmbig.SE.rds"))
 prot <- readRDS(file.path(data_dir, "prot", "4HFST_LFQ.SE.rds"))
 SN <- readRDS(file.path(data_dir, "snRNAseq", "snRNAseq.SE.rds"))
 
@@ -32,7 +32,6 @@ grepGene <- function(x,g){
 phosphoHeat <- function(subset, position_width=3, assayName="vsn", ...){
   library(gridtext)
   library(ComplexHeatmap)
-  subset <- subset[!grepl("Ambiguous",rowData(subset)$PhosphoSites),]
   subset <- subset[order(rowData(subset)$EarliestPos),]
   rdat <- rowData(subset)
   sqs <- strsplit(as.character(rdat$StrippedSequence),"")
@@ -71,11 +70,11 @@ shinyServer(function(input, output, session) {
   updateSelectizeInput(session, "gene_input", choices=sort(unique(g)),selected = "Fos", server=T)
 
   PlotHeight_Phos <- reactive(
-    return(100 + 10 * sum(rowData(phos)$GeneSymbol == input$gene_input,na.rm = T))
+    return(200 + 10 * sum(rowData(phos)$GeneSymbol == input$gene_input,na.rm = T))
   )
 
   PlotHeight_Phospep <- reactive(
-    return(100 +100 * sum(rowData(phos)$GeneSymbol == input$gene_input,na.rm = T))
+    return(200 +100 * sum(rowData(phos)$GeneSymbol == input$gene_input,na.rm = T))
   )
   
   ############
@@ -112,6 +111,10 @@ output$EDTS <- renderImage({
     list(src = paste0(fig_dir,"/Figure7A_EXPERIMENTALDESIGN.png"),width = 400,
          height = 90)
   }, deleteFile = FALSE)
+  output$EDsnRNA <- renderImage({
+    list(src = paste0(fig_dir,"/Figure5_EXPERIMENTALDESIGN.png"),width = 290,
+         height = 110)
+  }, deleteFile = FALSE)
   
   ### END Experimental design images
   ############ 
@@ -119,6 +122,10 @@ output$EDTS <- renderImage({
   ############
   ### START GENE PLOT
   output$gene_name <- renderText({input$gene_input})
+  output$gene_name_sn <- renderText({input$gene_input})
+  output$gene_name_prot <- renderText({input$gene_input})
+  output$gene_name_phos <- renderText({input$gene_input})
+  output$gene_name_phospep <- renderText({input$gene_input})
 
   output$availability <- renderText({
     snRNAdat <- SEtools::meltSE(SN, input$gene_input, assayName="logcpm")
@@ -160,18 +167,18 @@ output$EDTS <- renderImage({
     p[["sex"]] <- ggplot(sex, aes(Condition2, value, color = Condition2))
     p[["sex"]] <- p[["sex"]] +
       facet_grid(Region~Sex) +
-      ggtitle(paste(input$gene_input, " in males and females after AS (vHC)", sep = "")) +
+      ggtitle(paste(input$gene_input, " in males and females after acute stress (vHC)", sep = "")) +
       scale_color_manual(values = c("#441C53","#43488A","#F7E820"))
-    }else{p[["sex"]] <- ggplot() + ggtitle(paste(input$gene_input, " not present in males and females after AS (vHC)", sep = ""))}
+    }else{p[["sex"]] <- ggplot() + ggtitle(paste(input$gene_input, " not present in males and females after acute stress (vHC)", sep = ""))}
 
     hem <- d[d$Experiment == "LeftvsRight",]
     if(nrow(hem) > 0){
     p[["hem"]] <- ggplot(hem, aes(Condition2, value, color = Condition2))
     p[["hem"]] <- p[["hem"]] +
       facet_grid(Hemisphere~Region) +
-      ggtitle(paste(input$gene_input, " in left and right hemispheres after AS", sep = "")) +
+      ggtitle(paste(input$gene_input, " in left and right hemispheres after acute stress", sep = "")) +
       scale_color_manual(values = c("#441C53","#43488A"))
-    }else{p[["hem"]] <- ggplot() + ggtitle(paste(input$gene_input, " not present in left and right hemispheres after AS", sep = ""))}
+    }else{p[["hem"]] <- ggplot() + ggtitle(paste(input$gene_input, " not present in left and right hemispheres after acute stress", sep = ""))}
 
 
     CMV <- d[d$Experiment == "CMV-TRAP",]
@@ -180,9 +187,9 @@ output$EDTS <- renderImage({
     p[["CMV"]] <- ggplot(CMV, aes(Condition2, value, color = Condition2))
     p[["CMV"]] <- p[["CMV"]] +
       facet_grid(Region~protocol) +
-      ggtitle(paste(input$gene_input, " in CMV-nuTRAP (ubiquitous expression) after AS (vHC)", sep = ""))+
+      ggtitle(paste(input$gene_input, " in CMV-nuTRAP (ubiquitous expression) after acute stress (vHC)", sep = ""))+
       scale_color_manual(values = c("#441C53","#43488A"))
-    }else{p[["CMV"]] <- ggplot() + ggtitle(paste(input$gene_input, " not present in CMV-nuTRAP (ubiquitous expression) after AS (vHC)", sep = ""))}
+    }else{p[["CMV"]] <- ggplot() + ggtitle(paste(input$gene_input, " not present in CMV-nuTRAP (ubiquitous expression) after acute stress (vHC)", sep = ""))}
 
 
     CAMK2A <- d[d$Experiment %in% c("CAMK2A-TRAP-2-2M","CAMK2A-TRAP","VIAAT-TRAP"),]
@@ -191,9 +198,9 @@ output$EDTS <- renderImage({
     p[["CAMK2A"]] <- ggplot(CAMK2A, aes(Condition2, value, color = Condition2))
     p[["CAMK2A"]] <- p[["CAMK2A"]] +
       facet_grid(Type~Region, scales = "free_x") +
-      ggtitle(paste(input$gene_input, " in excitatory (CAMK2A) and inhibitory (VIAAT) neurons after AS", sep = "")) +
+      ggtitle(paste(input$gene_input, " in excitatory (CAMK2A) and inhibitory (VIAAT) neurons after acute stress", sep = "")) +
       scale_color_manual(values = c("#441C53","#43488A","#277A91"))
-    }else{p[["CAMK2A"]] <- ggplot() + ggtitle(paste(input$gene_input, " not present in excitatory (CAMK2A) and inhibitory (VIAAT) neurons after AS", sep = ""))}
+    }else{p[["CAMK2A"]] <- ggplot() + ggtitle(paste(input$gene_input, " not present in excitatory (CAMK2A) and inhibitory (VIAAT) neurons after acute stress", sep = ""))}
 
 
 
@@ -231,17 +238,19 @@ output$EDTS <- renderImage({
   output$phospho_plot <- renderPlot(height = function(){PlotHeight_Phos()},{
 
     subset <- phos[which(rowData(phos)$GeneSymbol == input$gene_input),]
-
-    if(nrow(subset) > 0){
+    if(nrow(subset) > 1){
       subset <- subset[order(rowData(subset)$EarliestPos),]
       subset$TimePoint <- factor(subset$TimePoint, levels = c("0min","6min","15min","30min","45min"))
       ac <- list(TimePoint = c("0min"="#441C53","6min"="#24798F","15min"="#25A885","30min"="#81C456","45min"="#F8E716"),
                  Region = c("dHC"="#B29249","vHC"="#8A9DAF"))
       phosphoHeat(subset, anno_colors = ac, assayName=input$phos_assay)
+    }else if(nrow(subset) == 1){
+      p1 <- ggplot() + ggtitle(paste("Single peptide found for ", input$gene_input, ". Can't plot heatmap. Use Phosphopeptides tab", sep = "")) + theme_bw()
+      print(p1)
     }
     else
     {
-      p1 <- ggplot() + ggtitle(paste("No phosphorylation data for ", input$gene_input, sep = "")) + theme_bw()
+      p1 <- ggplot() + ggtitle(paste("To phosphorylation data for ", input$gene_input, sep = "")) + theme_bw()
       print(p1)
     }
   })
@@ -256,7 +265,6 @@ output$EDTS <- renderImage({
     }
 
     if(nrow(subset) > 0){
-    subset <- subset[!grepl("Ambiguous",rowData(subset)$PhosphoSites),]
     subset <- subset[order(rowData(subset)$EarliestPos),]
     rowData(subset)$pepNr <- paste("Pep_", 1:nrow(subset),sep = "")
     rowData(subset)$pepNr <- factor(rowData(subset)$pepNr, levels = rowData(subset)$pepNr)
@@ -271,12 +279,17 @@ output$EDTS <- renderImage({
              p[as.integer(pos)] <- as.numeric(prob)
              p
            })
+    if(nrow(subset) == 1){
+      leng <- length(probs)
+    }else{
+      leng <- lengths(probs)
+    }
     pepdats <- data.frame(
-      ID=rep(rdat$pepNr, lengths(probs)),
-      name=rep(row.names(rdat), lengths(probs)),
+      ID=rep(rdat$pepNr, leng),
+      name=rep(row.names(rdat), leng),
       AA=unlist(strsplit(sq,"")),
       Position=unlist(mapply(a=as.integer(rdat$EarliestPos),
-                             b=lengths(probs), FUN=function(a,b) a:(a+b-1))),
+                             b=leng, FUN=function(a,b) a:(a+b-1))),
       Probability=unlist(probs)
     )
 
@@ -336,7 +349,7 @@ output$EDTS <- renderImage({
     }
 
     p4 <- plot_grid(p1,p2,p3, nrow = 1, rel_widths = c(1.7,1,1))
-    plot_grid(p0,p4,ncol = 1, rel_heights = c(1,nrow(subset)))
+    plot_grid(p0,p4,ncol = 1, rel_heights = c(1,1+nrow(subset)))
     }
     else
     {
@@ -377,7 +390,7 @@ output$EDTS <- renderImage({
       scale_color_manual(values = c("#441C53","#F8E716")) +
       facet_wrap(Region~SubRegion, scales = "free") +
       theme_bw() + theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1)) +
-      ggtitle(paste(input$gene_input, " Controls vs. 4h AS", sep = "")) + ylab(yaxname)
+      ggtitle(paste(input$gene_input, " Controls vs. 4h acute stress", sep = "")) + ylab(yaxname)
 
     if(input$select_plottype == "violin plot"){
       p2 <- p2 + geom_violin()
