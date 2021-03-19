@@ -8,3 +8,5 @@ To launch the app, use:
 ```{r}
 shiny::runApp('/path/app')
 ```
+
+Further, scripts and results related to the publication (REF) can be found in the /Results and /Scripts Folders
