@@ -1,0 +1,237 @@
+---
+title: "Left vs Right"
+output:
+  html_document:
+    keep_md: yes
+    theme: united
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(edgeR)
+library(SummarizedExperiment)
+library(SEtools)
+library(plgINS)
+library(ggplot2)
+source("BioStatsfunctions_LvZ.R")
+```
+
+# Plotting FST DEGs in left vs right hemisphere
+
+Let's start by plotting stress genes (DEG in FST time sereis) from in the right vs left dataset
+
+```{r}
+SE1 <- readRDS("../data/LeftRight.vHC.SE.rds")
+SE2 <- readRDS("../data/LeftRight.dHC.SE.rds")
+TS1 <- readRDS("../data/TimeSeriesFST.vHC.SE.rds")
+TS2 <- readRDS("../data/TimeSeriesFST.dHC.SE.rds")
+TS1$Block <- NULL
+TS1$Hemisphere <- rep("Both",ncol(TS1))
+TS2$Block <- NULL
+TS2$Hemisphere <- rep("Both",ncol(TS2))
+sg <- read.table("../metadata/TimeSeries_StatisticalResults.csv", sep = ";", header = T)
+sg <- unique(sg[sg$adj.P.Val <= 0.05,"ShortName"])
+intersecting <- intersect(intersect(rownames(SE1),rownames(SE2)),intersect(rownames(TS1),rownames(TS2)))
+CB <- cbind(SE1[intersecting,],
+            SE2[intersecting,],
+            TS1[intersecting,],
+            TS2[intersecting,])
+CB <- CB[,order(CB$Experiment, CB$Region, CB$Hemisphere, CB$Condition, CB$TimePoint)]
+CB <- dosvacor(CB, form = ~Experiment + Region + TimePoint, form0 = ~Experiment + Region)
+sehm(CB,genes = sg, 
+     gaps_at = c("Experiment","Region"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Region","Hemisphere","TimePoint"), 
+     cluster_rows = T, main = "significant genes from the time series at 45min in vHC",
+     assayName = "corrected")
+```
+
+# Analysis of right vs left in Region * Swim * Hemisphere
+
+```{r}
+SE1 <- readRDS("../data/LeftRight.vHC.SE.rds")
+SE2 <- readRDS("../data/LeftRight.dHC.SE.rds")
+SE <- cbind(SE1[intersect(rownames(SE1),rownames(SE2)),],SE2[intersect(rownames(SE1),rownames(SE2)),])
+SE <- SE[,order(SE$Region,SE$Condition)]
+
+
+design <- model.matrix(~SE$Condition * SE$Hemisphere * SE$Region)
+
+y <- DGEList(counts=assays(SE)$counts)
+y <- calcNormFactors(y)
+y <- estimateDisp(y,design)
+#filter out genes that are low expressed
+y <- y[filterByExpr(y, design),]
+
+Results <- list()
+fit <- glmQLFit(y,design)
+for(i in colnames(design)[-1]){
+  Results[[i]] <- glmQLFTest(fit, i)
+}
+
+for(i in names(Results)){
+  sg <- rownames(topTags(Results[[i]],p.value = 0.05, n = 1000))
+  if(length(sg) > 1){
+print(sehm(SE,genes = sg, 
+     gaps_at = c("Hemisphere"),
+     do.scale = T, 
+     anno_columns = c("Region","Condition","Hemisphere"), 
+     cluster_rows = T, 
+     main = paste("significant genes in",i,sep = " "),assayName = "logcpm"))
+print(sehm(CB,genes = sg, 
+     gaps_at = c("Experiment","Region"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Region","Hemisphere","TimePoint"), 
+     cluster_rows = T, main = paste("significant genes in",i,sep = " "),
+     assayName = "corrected"))
+print(topTags(Results[[i]],p.value = 0.05, n = 30))
+  }else{
+  print(paste(i, "had no significant entries", sep = " "))
+}
+}
+
+VolcanoPlotsEdgeR(Results, main = "Volcanoplots Swim * Hemisphere * Region")
+```
+
+# Analysis of right vs left in combined Regions after removal of region effects
+
+```{r}
+SE1 <- readRDS("../data/LeftRight.vHC.SE.rds")
+SE2 <- readRDS("../data/LeftRight.dHC.SE.rds")
+SE <- cbind(SE1[intersect(rownames(SE1),rownames(SE2)),],SE2[intersect(rownames(SE1),rownames(SE2)),])
+SE <- SE[,order(SE$Region,SE$Condition)]
+
+
+SE <- svacor(SE, form = ~ Condition * Hemisphere + Region, form0 = ~ Region)
+design <- model.matrix(~SE$SV1 + SE$SV2 + SE$SV3 + SE$SV4 + SE$SV5 + SE$SV6 + SE$SV7 + SE$SV8 + SE$SV9 + SE$Condition * SE$Hemisphere)
+
+y <- DGEList(counts=assays(SE)$counts)
+y <- calcNormFactors(y)
+y <- estimateDisp(y,design)
+#filter out genes that are low expressed
+y <- y[filterByExpr(y, design),]
+
+Results <- list()
+fit <- glmQLFit(y,design)
+for(i in colnames(design)[-c(1:10)]){
+  Results[[i]] <- glmQLFTest(fit, i)
+}
+
+for(i in names(Results)){
+  sg <- rownames(topTags(Results[[i]],p.value = 0.05, n = 1000))
+  if(length(sg) > 1){
+print(sehm(SE,genes = sg, 
+     gaps_at = c("Hemisphere"),
+     do.scale = T, 
+     anno_columns = c("Region","Condition","Hemisphere"), 
+     cluster_rows = T, 
+     main = paste("significant genes in",i,sep = " "),assayName = "corrected"))
+print(sehm(CB,genes = sg, 
+     gaps_at = c("Experiment","Region"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Region","Hemisphere","TimePoint"), 
+     cluster_rows = T, main = paste("significant genes in",i,sep = " "),
+     assayName = "corrected"))
+print(topTags(Results[[i]],p.value = 0.05, n = 30))
+  }else{
+  print(paste(i, "had no significant entries", sep = " "))
+}
+}
+VolcanoPlotsEdgeR(Results, main = "Volcanoplots Swim * Hemisphere")
+```
+
+# Analysis of right vs left in vHC
+
+```{r}
+SE1 <- readRDS("../data/LeftRight.vHC.SE.rds")
+SE <- SE1[,order(SE1$Region,SE1$Condition)]
+
+
+design <- model.matrix(~ SE$Condition * SE$Hemisphere)
+
+y <- DGEList(counts=assays(SE)$counts)
+y <- calcNormFactors(y)
+y <- estimateDisp(y,design)
+#filter out genes that are low expressed
+y <- y[filterByExpr(y, design),]
+
+Results <- list()
+fit <- glmQLFit(y,design)
+for(i in colnames(design)[-1]){
+  Results[[i]] <- glmQLFTest(fit, i)
+}
+
+for(i in names(Results)){
+  sg <- rownames(topTags(Results[[i]],p.value = 0.05, n = 1000))
+  if(length(sg) > 1){
+print(sehm(SE,genes = sg, 
+     gaps_at = c("Hemisphere"),
+     do.scale = T, 
+     anno_columns = c("Region","Condition","Hemisphere"), 
+     cluster_rows = T, 
+     main = paste("significant genes in",i,sep = " "),assayName = "logcpm"))
+print(sehm(CB,genes = sg, 
+     gaps_at = c("Experiment","Region"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Region","Hemisphere","TimePoint"), 
+     cluster_rows = T, main = paste("significant genes in",i,sep = " "),
+     assayName = "corrected"))
+print(topTags(Results[[i]],p.value = 0.05, n = 30))
+  }else{
+  print(paste(i, "had no significant entries", sep = " "))
+}
+}
+
+VolcanoPlotsEdgeR(Results, main = "Volcanoplots Swim * Hemisphere in vHC")
+```
+
+# Analysis of right vs left in dHC
+
+```{r}
+SE1 <- readRDS("../data/LeftRight.dHC.SE.rds")
+SE <- SE1[,order(SE1$Region,SE1$Condition)]
+
+
+design <- model.matrix(~ SE$Condition * SE$Hemisphere)
+
+y <- DGEList(counts=assays(SE)$counts)
+y <- calcNormFactors(y)
+y <- estimateDisp(y,design)
+#filter out genes that are low expressed
+y <- y[filterByExpr(y, design),]
+
+Results <- list()
+fit <- glmQLFit(y,design)
+for(i in colnames(design)[-1]){
+  Results[[i]] <- glmQLFTest(fit, i)
+}
+
+for(i in names(Results)){
+  sg <- rownames(topTags(Results[[i]],p.value = 0.05, n = 1000))
+  if(length(sg) > 1){
+print(sehm(SE,genes = sg, 
+     gaps_at = c("Hemisphere"),
+     do.scale = T, 
+     anno_columns = c("Region","Condition","Hemisphere"), 
+     cluster_rows = T, 
+     main = paste("significant genes in",i,sep = " "),assayName = "logcpm"))
+print(sehm(CB,genes = sg, 
+     gaps_at = c("Experiment","Region"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Region","Hemisphere","TimePoint"), 
+     cluster_rows = T, main = paste("significant genes in",i,sep = " "),
+     assayName = "corrected"))
+print(topTags(Results[[i]],p.value = 0.05, n = 30))
+  }else{
+  print(paste(i, "had no significant entries", sep = " "))
+}
+}
+
+VolcanoPlotsEdgeR(Results, main = "Volcanoplots Swim * Hemisphere in dHC")
+```

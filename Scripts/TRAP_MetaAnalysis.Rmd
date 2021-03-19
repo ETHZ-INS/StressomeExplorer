@@ -1,0 +1,767 @@
+---
+title: "CMVTRAP analysis"
+output:
+  html_document:
+    keep_md: yes
+    theme: united
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(edgeR)
+library(SummarizedExperiment)
+library(SEtools)
+library(plgINS)
+library(ggplot2)
+library(sva)
+library(DESeq2)
+library(topGO)
+source("BioStatsfunctions_LvZ.R")
+```
+
+# Analysis of CMV TRAP
+## Analysis of CMV TRAP data with full model (unbound vs bound)
+
+```{r}
+SE <- readRDS("../data/CMVTRAP.vHC.SE.rds")
+SE$SampleProcessing <- as.factor(SE$SampleProcessing)
+SE$SampleProcessing <- relevel(SE$SampleProcessing, "WholeRNA")
+SE <-SE[,order(SE$SampleProcessing,SE$Condition)]
+
+design <- model.matrix(~SE$SampleProcessing * SE$Condition)
+
+y <- DGEList(counts=assays(SE)$counts)
+y <- calcNormFactors(y)
+y <- estimateDisp(y,design)
+#filter out genes that are low expressed
+y <- y[filterByExpr(y, design),]
+
+Results <- list()
+fit <- glmQLFit(y,design)
+for(i in colnames(design)[-1]){
+  Results[[i]] <- glmQLFTest(fit, i)
+}
+
+#Plot these genes in the
+for(i in names(Results)){
+  sg <- rownames(topTags(Results[[i]],n = 1000, p.value = 0.05))
+  if(length(sg) > 1){
+print(sehm(SE,genes = sg, 
+     gaps_at = c("Experiment","SampleProcessing","Region","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint", "SampleProcessing","Region"), 
+     cluster_rows = T, main = paste("sig. in",i ,sep ="_"),
+     assayName = "logcpm"))
+print(topTags(Results[[i]],p.value = 0.05, n = 30))
+  }else{
+  print(paste(i, "had no significant entries", sep = " "))
+  print(topTags(Results[[i]], n = 30))
+}
+}
+
+VolcanoPlotsEdgeR(Results)
+
+gene_universe <- p.adjust(Results$`SE$SampleProcessingTRAP`$table$PValue,method = "BH" ) <= 0.05
+gene_universe <- as.numeric(gene_universe)
+gene_universe <- factor(gene_universe)
+names(gene_universe) <- rownames(Results$`SE$SampleProcessingTRAP`$table)
+
+go_table <- list()
+for(i in c("CC","BP","MF")){
+go_data <- new("topGOdata",
+               ontology = i,
+               allGenes = gene_universe,
+               nodeSize = 10,
+               annotationFun = annFUN.org,
+               mapping = "org.Mm.eg",
+               ID = "symbol")
+
+go_test <- runTest(go_data, algorithm = "weight01", statistic = "fisher")
+
+allGO = usedGO(object = go_data)
+go_table[[i]] <- GenTable(go_data, weightFisher = go_test,
+                     orderBy = "weightFisher", ranksOf = "weightFisher",
+                     topNodes = length(allGO))
+print(paste("topGO ontology type:", i, sep = " "))
+print(head(go_table[[i]],20))
+}
+
+```
+
+## Independent analysis in bound fraction
+
+Let's start by plotting stress genes from the timeseries in the new data set and correct for experiment and sample processing. we set CMV TRAP as the baseline
+
+```{r}
+SE <- readRDS("../data/CMVTRAP.vHC.SE.rds")
+SE$SampleProcessing <- as.factor(SE$SampleProcessing)
+SE$SampleProcessing <- relevel(SE$SampleProcessing, "WholeRNA")
+SE <-SE[,order(SE$SampleProcessing,SE$Condition)]
+SE <- SE[,SE$SampleProcessing == "TRAP"]
+
+y <- DGEList(counts=assays(SE)$counts, group = SE$Condition)
+y <- calcNormFactors(y)
+y <- estimateDisp(y)
+#filter out genes that are low expressed
+y <- y[filterByExpr(y),]
+
+Results <- list()
+Results[["Swim"]] <- exactTest(y)
+
+
+#Plot these genes in the
+for(i in names(Results)){
+  sg <-  rownames(topTags(Results[[i]],p.value = 0.05, n = 1000))
+  if(length(sg) > 1){
+print(sehm(SE,genes = sg, 
+     gaps_at = c("Experiment","SampleProcessing","Region","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint", "SampleProcessing","Region"), 
+     cluster_rows = T, main = paste("sig. in",i ,sep ="_"),
+     assayName = "logcpm"))
+print(topTags(Results[[i]],p.value = 0.05, n = 30))
+  }else{
+  print(paste(i, "had no significant entries", sep = " "))
+  print(topTags(Results[[i]], n = 30))
+}
+}
+
+VolcanoPlotsEdgeR(Results)
+
+```
+
+## Independent analysis in unbound fraction
+
+Let's start by plotting stress genes from the timeseries in the new data set and correct for experiment and sample processing. we set CMV TRAP as the baseline
+
+```{r}
+SE <- readRDS("../data/CMVTRAP.vHC.SE.rds")
+SE$SampleProcessing <- as.factor(SE$SampleProcessing)
+SE$SampleProcessing <- relevel(SE$SampleProcessing, "WholeRNA")
+SE <-SE[,order(SE$SampleProcessing,SE$Condition)]
+SE <- SE[,SE$SampleProcessing == "WholeRNA"]
+
+y <- DGEList(counts=assays(SE)$counts, group = SE$Condition)
+y <- calcNormFactors(y)
+y <- estimateDisp(y)
+#filter out genes that are low expressed
+y <- y[filterByExpr(y),]
+
+Results <- list()
+Results[["Swim"]] <- exactTest(y)
+
+
+#Plot these genes in the
+for(i in names(Results)){
+  sg <-  rownames(topTags(Results[[i]],p.value = 0.05, n = 1000))
+  if(length(sg) > 1){
+print(sehm(SE,genes = sg, 
+     gaps_at = c("Experiment","SampleProcessing","Region","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint", "SampleProcessing","Region"), 
+     cluster_rows = T, main = paste("sig. in",i ,sep ="_"),
+     assayName = "logcpm"))
+print(topTags(Results[[i]],p.value = 0.05, n = 30))
+  }else{
+  print(paste(i, "had no significant entries", sep = " "))
+  print(topTags(Results[[i]], n = 30))
+}
+}
+
+VolcanoPlotsEdgeR(Results)
+```
+
+## Analysis of CMV TRAP data using interaction term after removing processing effects
+
+Let's start by plotting stress genes from the timeseries in the new data set and correct for experiment and sample processing. we set CMV TRAP as the baseline
+
+```{r}
+SE <- readRDS("../data/CMVTRAP.vHC.SE.rds")
+SE$SampleProcessing <- as.factor(SE$SampleProcessing)
+SE$SampleProcessing <- relevel(SE$SampleProcessing, "WholeRNA")
+SE <-SE[,order(SE$SampleProcessing,SE$Condition)]
+
+SE <- dosvacor(SE,form = ~SampleProcessing * Condition, form0 = ~SampleProcessing)
+design <- model.matrix(~SE$SV1 + SE$SV2 + SE$SV3 + SE$Condition * SE$SampleProcessing)
+
+y <- DGEList(counts=assays(SE)$counts)
+y <- calcNormFactors(y)
+y <- estimateDisp(y,design)
+#filter out genes that are low expressed
+y <- y[filterByExpr(y, design),]
+
+Results <- list()
+fit <- glmQLFit(y,design)
+for(i in colnames(design)[c(5,7)]){
+  Results[[i]] <- glmQLFTest(fit, i)
+}
+Results[["FullModel"]] <-  glmQLFTest(fit, colnames(design)[c(5,7)])
+
+#Define significant genes
+select <- rownames(topTags(Results[["FullModel"]],p.value = 0.05, n = 1000))
+
+
+#Plot these genes in the
+for(i in names(Results)){
+  sg <- select[Results[[i]]$table[select,]$PValue <= 0.05]
+  if(length(sg) > 1){
+print(sehm(SE,genes = sg, 
+     gaps_at = c("Experiment","SampleProcessing","Region","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint", "SampleProcessing","Region"), 
+     cluster_rows = T, main = paste("sig. in",i ,sep ="_"),
+     assayName = "corrected"))
+print(topTags(Results[[i]],p.value = 0.05, n = 30))
+  }else{
+  print(paste(i, "had no significant entries", sep = " "))
+  print(topTags(Results[[i]], n = 30))
+}
+}
+
+VolcanoPlotsEdgeR(Results[-3])
+```
+
+# Meta analysis of all TRAP data
+
+## Analysis of combined data (additive)
+
+Let's start by plotting stress genes from the timeseries in the new data set and correct for experiment and sample processing
+
+```{r}
+SE <- readRDS("../data/CMVTRAP.vHC.SE.rds")
+SE$SampleNumber <- SE$SampleNr
+SE$SampleNr <- NULL
+SE$Block <- "CMVTRAP_Block1"
+TS1 <- readRDS("../data/TimeSeriesFST.vHC.SE.rds")
+TS1$CageNumber <- NULL
+IT <- readRDS("../data/VIAAT-TRAP.vHC.SE.rds")
+IT$SampleNumber <- NA
+ET1 <- readRDS("../data/CAMK2A-TRAP.vHC.SE.rds")
+ET1$TimePoint <- ET1$Timepoint
+ET1$Timepoint <- NULL
+ET2 <- readRDS("../data/CAMK2A-TRAP_Exp2.vHC.SE.rds")
+ET2$TimePoint <- ET2$Timepoint
+ET2$Timepoint <- NULL
+
+genes <- intersect(names(SE),names(TS1))
+genes <- intersect(genes,names(IT))
+genes <- intersect(genes,names(ET1))
+genes <- intersect(genes,names(ET2))
+
+ts_sg <- read.table("../metadata/TimeSeries_StatisticalResults.csv", sep = ";", header = T)
+ts_sg <- unique(ts_sg[(ts_sg$adj.P.Val <= 0.05 & ts_sg$TimePoint == "Swim_45min") ,"ShortName"])
+CB <- cbind(TS1[genes,],
+            SE[genes,],
+            IT[genes,],
+            ET1[genes,],
+            ET2[genes,])
+CB$SampleProcessing2 <- paste(CB$Experiment,CB$SampleProcessing, sep = "_")
+CB <- CB[,order(CB$Experiment, CB$SampleProcessing, CB$Condition, CB$TimePoint)]
+CB <- dosvacor(CB, form = ~SampleProcessing2 + TimePoint, form0 = ~SampleProcessing2)
+sehm(CB,genes = ts_sg, 
+     gaps_at = c("Experiment","SampleProcessing","Region","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint", "SampleProcessing","Region"), 
+     cluster_rows = T, main = "sig. genes from TS, batch corrected with all TRAP",
+     assayName = "corrected")
+
+CB2 <- CB[,CB$TimePoint %in% c("0min","45min")]
+
+design <- model.matrix(~CB2$SV1 + CB2$SV2 + CB2$SV3 + CB2$SV4 + CB2$SV5 + CB2$SV6 + CB2$SV7 + CB2$SV8 + CB2$SV9 + CB2$SV10 + CB2$SV11 + CB2$SV12 + CB2$SV13 + CB2$SV14 + CB2$SV15 + CB2$SV16 + CB2$SV17 + CB2$SV18 + CB2$SV19 + CB2$SV20 + CB2$SV21 + CB2$SV22 + CB2$SV23 + CB2$Condition)
+
+y <- DGEList(counts=assays(CB2)$counts)
+y <- calcNormFactors(y)
+y <- estimateDisp(y,design)
+#filter out genes that are low expressed
+y <- y[filterByExpr(y, design),]
+
+Results <- list()
+fit <- glmQLFit(y,design)
+for(i in colnames(design)[-c(1:24)]){
+  Results[[i]] <- glmQLFTest(fit, i)
+}
+
+for(i in names(Results)){
+  sg <- rownames(topTags(Results[[i]],p.value = 0.05, n = 1000))
+  if(length(sg) > 1){
+print(sehm(CB2,genes = sg, 
+     gaps_at = c("Experiment","SampleProcessing","Region","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint", "SampleProcessing","Region"), 
+     cluster_rows = T, main = "sig. genes (swim 45min) from combined analysis",
+     assayName = "corrected"))
+print(topTags(Results[[i]],p.value = 0.05, n = 30))
+  }else{
+  print(paste(i, "had no significant entries", sep = " "))
+  print(topTags(Results[[i]], n = 30))
+}
+}
+```
+## Analysis of combined data (additive) with randomization as control
+There seems to be a huge agreement between the data for some 45 minute genes. As a sanity check, lets randomly re-assign the treatment in one data-set (inhibitory TRAP) and make sure that this effect disappears in this data-set
+
+```{r}
+SE <- readRDS("../data/CMVTRAP.vHC.SE.rds")
+SE$SampleNumber <- SE$SampleNr
+SE$SampleNr <- NULL
+SE$Block <- "CMVTRAP_Block1"
+TS1 <- readRDS("../data/TimeSeriesFST.vHC.SE.rds")
+TS1$CageNumber <- NULL
+IT <- readRDS("../data/VIAAT-TRAP.vHC.SE.rds")
+IT$SampleNumber <- NA
+IT$TimePoint <- sample(IT$TimePoint)
+ET1 <- readRDS("../data/CAMK2A-TRAP.vHC.SE.rds")
+ET1$TimePoint <- ET1$Timepoint
+ET1$Timepoint <- NULL
+ET2 <- readRDS("../data/CAMK2A-TRAP_Exp2.vHC.SE.rds")
+ET2$TimePoint <- ET2$Timepoint
+ET2$Timepoint <- NULL
+
+genes <- intersect(names(SE),names(TS1))
+genes <- intersect(genes,names(IT))
+genes <- intersect(genes,names(ET1))
+genes <- intersect(genes,names(ET2))
+
+ts_sg <- read.table("../metadata/TimeSeries_StatisticalResults.csv", sep = ";", header = T)
+ts_sg <- unique(ts_sg[(ts_sg$adj.P.Val <= 0.05 & ts_sg$TimePoint == "Swim_45min") ,"ShortName"])
+CB <- cbind(TS1[genes,],
+            SE[genes,],
+            IT[genes,],
+            ET1[genes,],
+            ET2[genes,])
+CB$SampleProcessing2 <- paste(CB$Experiment,CB$SampleProcessing, sep = "_")
+CB <- CB[,order(CB$Experiment, CB$SampleProcessing, CB$TimePoint)]
+CB <- dosvacor(CB, form = ~SampleProcessing2 + TimePoint, form0 = ~SampleProcessing2)
+sehm(CB,genes = ts_sg, 
+     gaps_at = c("Experiment","SampleProcessing","Region","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint", "SampleProcessing","Region"), 
+     cluster_rows = T, main = "sig. genes from TS, batch corrected, 1 experiment randomized",
+     assayName = "corrected")
+
+CB2 <- CB[,CB$TimePoint %in% c("0min","45min")]
+
+design <- model.matrix(~CB2$SV1 + CB2$SV2 + CB2$SV3 + CB2$SV4 + CB2$SV5 + CB2$SV6 + CB2$SV7 + CB2$SV8 + CB2$SV9 + CB2$SV10 + CB2$SV11 + CB2$SV12 + CB2$SV13 + CB2$SV14 + CB2$SV15 + CB2$SV16 + CB2$SV17 + CB2$SV18 + CB2$SV19 + CB2$SV20 + CB2$SV21 + CB2$SV22 + CB2$SV23 + CB2$Condition)
+
+y <- DGEList(counts=assays(CB2)$counts)
+y <- calcNormFactors(y)
+y <- estimateDisp(y,design)
+#filter out genes that are low expressed
+y <- y[filterByExpr(y, design),]
+
+Results <- list()
+fit <- glmQLFit(y,design)
+for(i in colnames(design)[-c(1:24)]){
+  Results[[i]] <- glmQLFTest(fit, i)
+}
+
+for(i in names(Results)){
+  sg <- rownames(topTags(Results[[i]],p.value = 0.05, n = 1000))
+  if(length(sg) > 1){
+print(sehm(CB2,genes = sg, 
+     gaps_at = c("Experiment","SampleProcessing","Region","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint", "SampleProcessing","Region"), 
+     cluster_rows = T, main = "sig. genes (swim 45min) from combined analysis",
+     assayName = "corrected"))
+print(topTags(Results[[i]],p.value = 0.05, n = 30))
+  }else{
+  print(paste(i, "had no significant entries", sep = " "))
+  print(topTags(Results[[i]], n = 30))
+}
+}
+```
+
+As we can see, the effect is not introduced by the SVA correction, but really there!
+The next working hypothesis is that SVA can correct for these effects as long as they are present in experiments / sample processing. Lets test this by pairing different experiments with the TimeSeries and applying SVA
+
+### SVA pairing of inhibitory TRAP + TS
+
+```{r}
+TS1 <- readRDS("../data/TimeSeriesFST.vHC.SE.rds")
+TS1$CageNumber <- NULL
+IT <- readRDS("../data/VIAAT-TRAP.vHC.SE.rds")
+IT$SampleNumber <- NA
+
+
+genes <- intersect(names(TS1),names(IT))
+
+ts_sg <- read.table("../metadata/TimeSeries_StatisticalResults.csv", sep = ";", header = T)
+ts_sg <- unique(ts_sg[(ts_sg$adj.P.Val <= 0.05 & ts_sg$TimePoint == "Swim_45min") ,"ShortName"])
+CB <- cbind(TS1[genes,],
+            IT[genes,])
+CB$SampleProcessing2 <- paste(CB$Experiment,CB$SampleProcessing, sep = "_")
+CB <- CB[,order(CB$Experiment, CB$SampleProcessing, CB$TimePoint)]
+CB <- dosvacor(CB, form = ~SampleProcessing2 + TimePoint, form0 = ~SampleProcessing2)
+sehm(CB,genes = ts_sg, 
+     gaps_at = c("Experiment","SampleProcessing","Region","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint", "SampleProcessing","Region"), 
+     cluster_rows = T, main = "sig genes from TS, in TS and inhibitory TRAP",
+     assayName = "corrected")
+
+CB2 <- CB[,CB$TimePoint %in% c("0min","45min")]
+
+design <- model.matrix(~CB2$SV1 + CB2$SV2 + CB2$SV3 + CB2$SV4 + CB2$SV5 + CB2$SV6 + CB2$SV7 + CB2$SV8 + CB2$SV9 + CB2$SV10 + CB2$SV11 + CB2$SV12 + CB2$Condition)
+
+y <- DGEList(counts=assays(CB2)$counts)
+y <- calcNormFactors(y)
+y <- estimateDisp(y,design)
+#filter out genes that are low expressed
+y <- y[filterByExpr(y, design),]
+
+Results <- list()
+fit <- glmQLFit(y,design)
+for(i in colnames(design)[-c(1:13)]){
+  Results[[i]] <- glmQLFTest(fit, i)
+}
+
+for(i in names(Results)){
+  sg <- rownames(topTags(Results[[i]],p.value = 0.05, n = 1000))
+  if(length(sg) > 1){
+print(sehm(CB2,genes = sg, 
+     gaps_at = c("Experiment","SampleProcessing","Region","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint", "SampleProcessing","Region"), 
+     cluster_rows = T, main = "sig. genes (swim 45min) in TS + inhibitory TRAP",
+     assayName = "corrected"))
+print(topTags(Results[[i]],p.value = 0.05, n = 30))
+  }else{
+  print(paste(i, "had no significant entries", sep = " "))
+  print(topTags(Results[[i]], n = 30))
+}
+}
+```
+### SVA pairing of excitatory TRAP + TS
+
+```{r}
+TS1 <- readRDS("../data/TimeSeriesFST.vHC.SE.rds")
+TS1$CageNumber <- NULL
+ET1 <- readRDS("../data/CAMK2A-TRAP.vHC.SE.rds")
+ET1$TimePoint <- ET1$Timepoint
+ET1$Timepoint <- NULL
+ET2 <- readRDS("../data/CAMK2A-TRAP_Exp2.vHC.SE.rds")
+ET2$TimePoint <- ET2$Timepoint
+ET2$Timepoint <- NULL
+
+genes <- intersect(names(TS1),names(ET1))
+genes <- intersect(genes,names(ET2))
+
+ts_sg <- read.table("../metadata/TimeSeries_StatisticalResults.csv", sep = ";", header = T)
+ts_sg <- unique(ts_sg[(ts_sg$adj.P.Val <= 0.05 & ts_sg$TimePoint == "Swim_45min") ,"ShortName"])
+CB <- cbind(TS1[genes,],
+            ET1[genes,],
+            ET2[genes,])
+CB$SampleProcessing2 <- paste(CB$Experiment,CB$SampleProcessing, sep = "_")
+CB <- CB[,order(CB$Experiment, CB$SampleProcessing, CB$TimePoint)]
+CB <- dosvacor(CB, form = ~SampleProcessing2 + TimePoint, form0 = ~SampleProcessing2)
+sehm(CB,genes = ts_sg, 
+     gaps_at = c("Experiment","SampleProcessing","Region","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint", "SampleProcessing","Region"), 
+     cluster_rows = T, main = "sig genes from TS, in TS and excitatory TRAP",
+     assayName = "corrected")
+
+#Let run a differential analysis on the 45min and 1h30min timepoints
+CB2 <- CB[,CB$TimePoint %in% c("0min","45min","1h30min")]
+CB2$TimePoint <- factor(CB2$TimePoint,levels = c("0min","45min","1h30min"))
+
+design <- model.matrix(~CB2$SV1 + CB2$SV2 + CB2$SV3 + CB2$SV4 + CB2$SV5 + CB2$SV6 + CB2$SV7 + CB2$SV8 + CB2$SV9 + CB2$SV10 + CB2$SV11 + CB2$SV12 + CB2$SV13 + CB2$SV14 + CB2$SV15 + CB2$SV16 + CB2$SV17 + CB2$SV18 + CB2$SV19 + CB2$SV20 + CB2$SV21 + CB2$SV22 + CB2$SV23 + CB2$SV24 + CB2$SV25 + CB2$TimePoint)
+
+y <- DGEList(counts=assays(CB2)$counts)
+y <- calcNormFactors(y)
+y <- estimateDisp(y,design)
+#filter out genes that are low expressed
+y <- y[filterByExpr(y, design),]
+
+Results <- list()
+fit <- glmQLFit(y,design)
+Results[["ConditionSwim"]] <- glmQLFTest(fit, colnames(design)[27:28])
+
+for(i in names(Results)){
+  sg <- rownames(topTags(Results[[i]],p.value = 0.05, n = 1000))
+  if(length(sg) > 1){
+print(sehm(CB2,genes = sg, 
+     gaps_at = c("Experiment","SampleProcessing","Region","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint", "SampleProcessing","Region"), 
+     cluster_rows = T, main = "sig. genes (swim 45min) in TS and excitatory TRAP",
+     assayName = "corrected"))
+print(topTags(Results[[i]],p.value = 0.05, n = 30))
+  }else{
+  print(paste(i, "had no significant entries", sep = " "))
+  print(topTags(Results[[i]], n = 30))
+}
+}
+```
+
+### SVA pairing of CMV TRAP (bound and unbound) + TS
+
+```{r}
+TS1 <- readRDS("../data/TimeSeriesFST.vHC.SE.rds")
+TS1$CageNumber <- NULL
+SE <- readRDS("../data/CMVTRAP.vHC.SE.rds")
+SE$SampleNumber <- SE$SampleNr
+SE$SampleNr <- NULL
+SE$Block <- "CMVTRAP_Block1"
+
+genes <- intersect(names(TS1),names(SE))
+
+ts_sg <- read.table("../metadata/TimeSeries_StatisticalResults.csv", sep = ";", header = T)
+ts_sg <- unique(ts_sg[(ts_sg$adj.P.Val <= 0.05 & ts_sg$TimePoint == "Swim_45min") ,"ShortName"])
+CB <- cbind(TS1[genes,],
+            SE[genes,])
+CB$SampleProcessing2 <- paste(CB$Experiment,CB$SampleProcessing, sep = "_")
+CB <- CB[,order(CB$Experiment, CB$SampleProcessing, CB$TimePoint)]
+CB <- dosvacor(CB, form = ~SampleProcessing2 + TimePoint, form0 = ~SampleProcessing2)
+sehm(CB,genes = ts_sg, 
+     gaps_at = c("Experiment","SampleProcessing","Region","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint", "SampleProcessing","Region"), 
+     cluster_rows = T, main = "sig genes from TS, in TS and CMV TRAP",
+     assayName = "corrected")
+
+CB2 <- CB[,CB$TimePoint %in% c("0min","45min")]
+
+design <- model.matrix(~CB2$SV1 + CB2$SV2 + CB2$SV3 + CB2$SV4 + CB2$SV5 + CB2$SV6 + CB2$SV7 + CB2$SV8 + CB2$SV9 + CB2$SV10 + CB2$SV11 + CB2$SV12 + CB2$SV13 + CB2$SV14 + CB2$SV15 + CB2$SV16 + CB2$SV17 + CB2$Condition)
+
+y <- DGEList(counts=assays(CB2)$counts)
+y <- calcNormFactors(y)
+y <- estimateDisp(y,design)
+#filter out genes that are low expressed
+y <- y[filterByExpr(y, design),]
+
+Results <- list()
+fit <- glmQLFit(y,design)
+for(i in colnames(design)[-c(1:18)]){
+  Results[[i]] <- glmQLFTest(fit, i)
+}
+
+for(i in names(Results)){
+  sg <- rownames(topTags(Results[[i]],p.value = 0.05, n = 1000))
+  if(length(sg) > 1){
+print(sehm(CB2,genes = sg, 
+     gaps_at = c("Experiment","SampleProcessing","Region","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint", "SampleProcessing","Region"), 
+     cluster_rows = T, main = "sig genes (swim 45min) in TS and CMV TRAP (bound and unbound)",
+     assayName = "corrected"))
+print(topTags(Results[[i]],p.value = 0.05, n = 30))
+  }else{
+  print(paste(i, "had no significant entries", sep = " "))
+  print(topTags(Results[[i]], n = 30))
+}
+}
+```
+
+## Analysis of combined data (with interaction) at 45min
+
+Let's start by plotting stress genes from the timeseries in the new data set and correct for experiment and sample processing
+
+```{r}
+SE <- readRDS("../data/CMVTRAP.vHC.SE.rds")
+SE$SampleNumber <- SE$SampleNr
+SE$SampleNr <- NULL
+SE$Block <- "CMVTRAP_Block1"
+TS1 <- readRDS("../data/TimeSeriesFST.vHC.SE.rds")
+TS1$CageNumber <- NULL
+TS1$Experiment <- "TimeSeries"
+IT <- readRDS("../data/VIAAT-TRAP.vHC.SE.rds")
+IT$SampleNumber <- NA
+IT$Experiment <- "VIAAT"
+ET1 <- readRDS("../data/CAMK2A-TRAP.vHC.SE.rds")
+ET1$TimePoint <- ET1$Timepoint
+ET1$Timepoint <- NULL
+ET1$Experiment <- "CAMK2A"
+ET2 <- readRDS("../data/CAMK2A-TRAP_Exp2.vHC.SE.rds")
+ET2$TimePoint <- ET2$Timepoint
+ET2$Timepoint <- NULL
+ET2$Experiment <- "CAMK2A"
+
+genes <- intersect(names(SE),names(TS1))
+genes <- intersect(genes,names(IT))
+genes <- intersect(genes,names(ET1))
+genes <- intersect(genes,names(ET2))
+
+ts_sg <- read.table("../metadata/TimeSeries_StatisticalResults.csv", sep = ";", header = T)
+ts_sg <- unique(ts_sg[(ts_sg$adj.P.Val <= 0.05 & ts_sg$TimePoint == "Swim_45min") ,"ShortName"])
+CB <- cbind(TS1[genes,],
+            SE[genes,],
+            IT[genes,],
+            ET1[genes,],
+            ET2[genes,])
+CB$SampleProcessing2 <- paste(CB$Experiment,CB$SampleProcessing, sep = "_")
+CB$Experiment <- as.factor(CB$Experiment)
+CB$Experiment <- relevel(CB$Experiment,"TimeSeries")
+CB <- CB[,order(CB$Experiment, CB$SampleProcessing, CB$Condition, CB$TimePoint)]
+CB <- CB[,CB$TimePoint %in% c("0min","45min")]
+CB$TimePoint <- factor(CB$TimePoint,levels =  c("0min","45min"))
+CB$SampleProcessing2 <- as.factor(CB$SampleProcessing2)
+CB$SampleProcessing2 <- relevel(CB$SampleProcessing2,"TimeSeries_WholeRNA")
+
+CB <- dosvacor(CB, form = ~SampleProcessing2 * TimePoint, form0 = ~SampleProcessing2)
+sehm(CB,genes = ts_sg, 
+     gaps_at = c("Experiment","SampleProcessing","Region","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint", "SampleProcessing","Region"), 
+     cluster_rows = T, main = "sig. genes from TS, batch corrected in TS and all TRAP",
+     assayName = "corrected")
+
+CB2 <- CB[,CB$TimePoint %in% c("0min","45min")]
+
+design <- model.matrix(~CB2$SV1 + CB2$SV2 + CB2$SV3 + CB2$SV4 + CB2$SV5 + CB2$SV6 + CB2$SV7 + CB2$SV8 + CB2$SV9 + CB2$SV10 + CB2$SV11 + CB2$SV12 +CB$Condition * CB$SampleProcessing2)
+
+y <- DGEList(counts=assays(CB2)$counts)
+y <- calcNormFactors(y)
+y <- estimateDisp(y,design)
+#filter out genes that are low expressed
+y <- y[filterByExpr(y, design),]
+
+Results <- list()
+fit <- glmQLFit(y,design)
+for(i in colnames(design)[c(14,19:22)]){
+  Results[[i]] <- glmQLFTest(fit, i)
+}
+Results[["FullModel"]] <-  glmQLFTest(fit, colnames(design)[c(14,19:22)])
+
+#Define significant genes
+select <- rownames(topTags(Results[["FullModel"]],p.value = 0.05, n = 1000))
+
+#Plot these genes in the
+for(i in names(Results)){
+  sg <- select[Results[[i]]$table[select,]$PValue <= 0.05]
+  if(length(sg) > 1){
+print(sehm(CB2,genes = sg, 
+     gaps_at = c("Experiment","SampleProcessing","Region","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint", "SampleProcessing","Region"), 
+     cluster_rows = T, main = paste("sig genes in",i ,sep ="_"),
+     assayName = "corrected"))
+print(topTags(Results[[i]],p.value = 0.05, n = 30))
+  }else{
+  print(paste(i, "had no significant entries", sep = " "))
+  print(topTags(Results[[i]], n = 30))
+}
+}
+
+tags <- topTags(Results[["FullModel"]],p.value = 0.05, n = 20)$table
+
+radial.df <- data.frame(name = rownames(tags), logFC = tags$logFC.CB.ConditionSwim, Experiment = "TimeSeries")
+radial.df <- rbind(radial.df, data.frame(name = rownames(tags), logFC = tags$logFC.CB.ConditionSwim + tags$logFC.CB.ConditionSwim.CB.SampleProcessing2CAMK2A_TRAP, Experiment = "Camk2a TRAP"))
+radial.df <- rbind(radial.df, data.frame(name = rownames(tags), logFC = tags$logFC.CB.ConditionSwim + tags$logFC.CB.ConditionSwim.CB.SampleProcessing2CMV.TRAP_TRAP, Experiment = "CMV TRAP"))
+radial.df <- rbind(radial.df, data.frame(name = rownames(tags), logFC = tags$logFC.CB.ConditionSwim + tags$logFC.CB.ConditionSwim.CB.SampleProcessing2VIAAT_TRAP, Experiment = "Viaat TRAP"))
+radial.df$direction = ifelse(radial.df$logFC >= 0, "up-regulated", "down-regulated")
+radial.df$logFC <- abs(radial.df$logFC)
+radial.df$Experiment <- as.factor(radial.df$Experiment)
+radial.df$Experiment <- relevel(radial.df$Experiment, "TimeSeries")
+
+ggplot(radial.df, aes(x=name, y=logFC, fill=name, color = direction)) +
+    geom_bar(stat='identity') + facet_wrap(~Experiment) + coord_polar() + scale_color_manual(values= c("red","black")) + theme_bw() + ggtitle("top 20 genes")
+
+```
+
+## Analysis of combined data (with interaction) at 45min without timeseries
+
+Let's start by plotting stress genes from the timeseries in the new data set and correct for experiment and sample processing. we set CMV TRAP as the baseline
+
+```{r}
+SE <- readRDS("../data/CMVTRAP.vHC.SE.rds")
+SE$SampleNumber <- SE$SampleNr
+SE$SampleNr <- NULL
+SE$Block <- "CMVTRAP_Block1"
+IT <- readRDS("../data/VIAAT-TRAP.vHC.SE.rds")
+IT$SampleNumber <- NA
+IT$Experiment <- "VIAAT"
+ET1 <- readRDS("../data/CAMK2A-TRAP.vHC.SE.rds")
+ET1$TimePoint <- ET1$Timepoint
+ET1$Timepoint <- NULL
+ET1$Experiment <- "CAMK2A"
+ET2 <- readRDS("../data/CAMK2A-TRAP_Exp2.vHC.SE.rds")
+ET2$TimePoint <- ET2$Timepoint
+ET2$Timepoint <- NULL
+ET2$Experiment <- "CAMK2A"
+
+genes <- intersect(names(SE),names(IT))
+genes <- intersect(genes,names(ET1))
+genes <- intersect(genes,names(ET2))
+
+ts_sg <- read.table("../metadata/TimeSeries_StatisticalResults.csv", sep = ";", header = T)
+ts_sg <- unique(ts_sg[(ts_sg$adj.P.Val <= 0.05 & ts_sg$TimePoint == "Swim_45min") ,"ShortName"])
+CB <- cbind(SE[genes,],
+            IT[genes,],
+            ET1[genes,],
+            ET2[genes,])
+CB$SampleProcessing2 <- paste(CB$Experiment,CB$SampleProcessing, sep = "_")
+CB$Experiment <- as.factor(CB$Experiment)
+CB$Experiment <- relevel(CB$Experiment,"CMV-TRAP")
+CB <- CB[,order(CB$Experiment, CB$SampleProcessing, CB$Condition, CB$TimePoint)]
+CB <- CB[,CB$TimePoint %in% c("0min","45min")]
+CB$TimePoint <- factor(CB$TimePoint,levels =  c("0min","45min"))
+CB$SampleProcessing2 <- as.factor(CB$SampleProcessing2)
+CB$SampleProcessing2 <- relevel(CB$SampleProcessing2,"CMV-TRAP_TRAP")
+
+CB <- dosvacor(CB, form = ~SampleProcessing2 * TimePoint, form0 = ~SampleProcessing2)
+sehm(CB,genes = ts_sg, 
+     gaps_at = c("Experiment","SampleProcessing","Region","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint", "SampleProcessing","Region"), 
+     cluster_rows = T, main = "sig. genes from TS, batch corrected in all TRAP",
+     assayName = "corrected")
+
+CB2 <- CB[,CB$TimePoint %in% c("0min","45min")]
+
+design <- model.matrix(~CB2$SV1 + CB2$SV2 + CB2$SV3 + CB2$SV4 + CB2$SV5 + CB2$SV6 + CB2$SV7 + CB2$SV8 +CB$Condition * CB$SampleProcessing2)
+
+y <- DGEList(counts=assays(CB2)$counts)
+y <- calcNormFactors(y)
+y <- estimateDisp(y,design)
+#filter out genes that are low expressed
+y <- y[filterByExpr(y, design),]
+
+Results <- list()
+fit <- glmQLFit(y,design)
+for(i in colnames(design)[c(10,14:16)]){
+  Results[[i]] <- glmQLFTest(fit, i)
+}
+Results[["FullModel"]] <-  glmQLFTest(fit, colnames(design)[c(10,14:16)])
+
+#Define significant genes
+select <- rownames(topTags(Results[["FullModel"]],p.value = 0.05, n = 1000))
+
+#Plot these genes in the
+for(i in names(Results)){
+  sg <- select[Results[[i]]$table[select,]$PValue <= 0.05]
+  if(length(sg) > 1){
+print(sehm(CB2,genes = sg, 
+     gaps_at = c("Experiment","SampleProcessing","Region","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint", "SampleProcessing","Region"), 
+     cluster_rows = T, main = paste("sig genes in",i ,sep ="_"),
+     assayName = "corrected"))
+print(topTags(Results[[i]],p.value = 0.05, n = 30))
+  }else{
+  print(paste(i, "had no significant entries", sep = " "))
+  print(topTags(Results[[i]], n = 30))
+}
+}
+
+tags <- topTags(Results[["FullModel"]],p.value = 0.05, n = 20)$table
+
+radial.df <- data.frame(name = rownames(tags), logFC = tags$logFC.CB.ConditionSwim, Experiment = "CMV TRAP")
+radial.df <- rbind(radial.df, data.frame(name = rownames(tags), logFC = tags$logFC.CB.ConditionSwim + tags$logFC.CB.ConditionSwim.CB.SampleProcessing2CAMK2A_TRAP, Experiment = "Camk2a TRAP"))
+radial.df <- rbind(radial.df, data.frame(name = rownames(tags), logFC = tags$logFC.CB.ConditionSwim + tags$logFC.CB.ConditionSwim.CB.SampleProcessing2VIAAT_TRAP, Experiment = "Viaat TRAP"))
+radial.df$direction = ifelse(radial.df$logFC >= 0, "up-regulated", "down-regulated")
+radial.df$logFC <- abs(radial.df$logFC)
+radial.df$Experiment <- as.factor(radial.df$Experiment)
+radial.df$Experiment <- relevel(radial.df$Experiment, "CMV TRAP")
+
+ggplot(radial.df, aes(x=name, y=logFC, fill=name, color = direction)) +
+    geom_bar(stat='identity') + facet_wrap(~Experiment) + coord_polar() + scale_color_manual(values= c("red","black")) + theme_bw() + ggtitle("top 20 genes")
+```

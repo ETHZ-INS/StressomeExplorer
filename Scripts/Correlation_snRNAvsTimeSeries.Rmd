@@ -1,0 +1,245 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+SE <- readRDS("../data/TimeSeriesFST.split.processed.rds")
+DEA <- readRDS("../data/TimeSeriesFST_unspliced_DEAs.rds")
+data_snRNA_seq <- readRDS("../data/snRNA.DEAs.rds")
+data_spl_seq <- DEA$TimePoint45min
+
+sig <- rownames(data_spl_seq[data_spl_seq$FDR <= 0.05,])
+
+sehm(SE,genes = sig, assayName = "corrected", 
+     gaps_at = c("Region","type"),
+     do.scale = T, 
+     anno_columns = c("TimePoint"), 
+     cluster_rows = T, main = "genes",)
+
+
+
+
+```
+
+```{r}
+
+p <- list()
+lms <- list()
+
+for(i in names(data_snRNA_seq)){
+sig <- rownames(data_spl_seq[data_spl_seq$FDR <= 0.05,])
+dat <- data_snRNA_seq[[i]]
+sig <- intersect(sig,rownames(dat))
+#sig <- intersect(sig, rownames(dat[dat$p_adj.loc < 0.05,]))
+sig <- intersect(sig, rownames(dat[dat$logCPM > 3,]))
+
+corrdat <- data.frame(logFC.celltype = dat[sig,"logFC"], logFC.bulk = data_spl_seq[sig,"logFC"], significance = dat[sig,"p_adj.loc"])
+
+corrdat <- corrdat[order(-corrdat$significance),]
+range = 30
+prange = ceiling(max(abs(c(corrdat$logFC.celltype,corrdat$logFC.bulk))))
+
+lms[[i]] <- cor.test(corrdat$logFC.celltype,corrdat$logFC.bulk, method = "spearman")
+corv <- cor(corrdat$logFC.celltype, corrdat$logFC.bulk, method="spearman")
+
+eq <- substitute(~~italic(rho)~"="~b, 
+      list(b = format(corv , digits = 2)))
+eq <- as.character(as.expression(eq))
+
+p[[i]] <- ggplot(corrdat,aes(logFC.celltype,logFC.bulk, color = -log10(significance))) + 
+  geom_hline(yintercept = 0, color = "grey40") +
+  geom_vline(xintercept = 0, color = "grey40") +
+  geom_point(size =1) + 
+  scale_colour_gradientn(colours = c("black", "red2", "gold"),
+                         values = c(0, -log10(0.05)/range, 1),
+                         limits = c(0,range)) +
+  ggtitle(i)+
+  geom_text(data = corrdat[1,],x = 0, y = prange*0.8, label = eq, parse = TRUE, color = "black") +
+  scale_x_continuous(name = paste("logFC",i, sep = " "), 
+                     limits = c(-prange,prange), 
+                     breaks = c(-prange,0,prange)) +
+  scale_y_continuous(name = "logFC bulk unspliced", 
+                     limits = c(-prange,prange), 
+                     breaks = c(-prange,0,prange)) +
+  labs(colour="-log10(FDR)") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), panel.border = element_rect(fill = NA),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        plot.title = element_text(hjust = 0.5))+
+  guides(color = FALSE)
+
+
+}
+
+p_corrs <- gridExtra::grid.arrange(p$Astrocytes, p$`DG Granule Neurons`,p$Oligodendrocytes,p$`Excitatory Neurons`, p$Vascular,p$`Inhibitory Neurons`,p$OPC,p$Microglia, widths = c(1,1,1,1), layout_matrix = rbind(c(1, 2, 3, 4), c(5, 6,7,8)))
+plot(p_corrs)
+```
+
+```{r}
+p <- list()
+lms <- list()
+
+for(i in names(data_snRNA_seq)){
+sig <- rownames(data_spl_seq[data_spl_seq$FDR <= 0.05,])
+dat <- data_snRNA_seq[[i]]
+sig <- intersect(sig,rownames(dat))
+sig <- intersect(sig, rownames(dat[dat$p_adj.loc < 0.05,]))
+sig <- intersect(sig, rownames(dat[dat$logCPM > 3,]))
+corrdat <- data.frame(logFC.celltype = dat[sig,"logFC"], logFC.bulk = data_spl_seq[sig,"logFC"], significance = dat[sig,"p_adj.loc"])
+
+corrdat <- corrdat[order(-corrdat$significance),]
+range = 30
+prange = ceiling(max(abs(c(corrdat$logFC.celltype,corrdat$logFC.bulk))))
+
+if(length(sig) > 3){
+lms[[i]] <- cor.test(corrdat$logFC.celltype,corrdat$logFC.bulk, method = "spearman")
+corv <- cor(corrdat$logFC.celltype, corrdat$logFC.bulk, method="spearman")
+
+eq <- substitute(~~italic(p)~"="~pv~italic(rho)~"="~b, 
+      list(b = format(corv , digits = 2),
+           pv = format(lms[[i]]$p.value, digits = 2)))
+eq <- as.character(as.expression(eq))
+}else{
+  eq = " "
+}
+
+p[[i]] <- ggplot(corrdat,aes(logFC.celltype,logFC.bulk, color = -log10(significance))) + 
+  geom_hline(yintercept = 0, color = "grey40") +
+  geom_vline(xintercept = 0, color = "grey40") +
+  geom_point(size =1) + 
+  #geom_density_2d() + 
+  scale_colour_gradientn(colours = c("black", "red2", "gold"),
+                         values = c(0, -log10(0.05)/range, 1),
+                         limits = c(0,range)) +
+  ggtitle(i)+
+  geom_text(data = corrdat[1,],x = 0, y = prange*0.8, label = eq, parse = TRUE, color = "black",size = 3) +
+  scale_x_continuous(name = paste("logFC",i, sep = " "), 
+                     limits = c(-prange,prange), 
+                     breaks = c(-prange,0,prange)) +
+  scale_y_continuous(name = "logFC bulk unspliced", 
+                     limits = c(-prange,prange), 
+                     breaks = c(-prange,0,prange)) +
+  labs(colour="-log10(FDR)") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), panel.border = element_rect(fill = NA),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        plot.title = element_text(hjust = 0.5))+
+  guides(color = FALSE)
+
+
+}
+
+p_corrs <- gridExtra::grid.arrange(p$Astrocytes, p$`DG Granule Neurons`,p$Oligodendrocytes,p$`Excitatory Neurons`, p$Vascular,p$`Inhibitory Neurons`,p$OPC,p$Microglia, widths = c(1,1,1,1), layout_matrix = rbind(c(1, 2, 3, 4), c(5, 6,7,8)))
+plot(p_corrs)
+```
+
+```{r}
+data <- readRDS("./../data/TimeSeriesFST.split.processed.rds")
+
+spliced <-data[,data$type == "spliced"]
+unspliced <- data[,data$type == "unspliced"]
+
+Results <- list()
+Regions <- c("vHC","dHC")
+Groups <-c("Swim_45min","Swim_1h30min","Swim_2h","Swim_3h","Swim_4h")
+
+AllResults <- NULL
+for(i in Regions){
+  for(j in Groups){
+    subdat <-  unspliced[,unspliced$Region == i & (unspliced$Group == j | unspliced$Group =="Homecage")]
+    
+    
+    design <- model.matrix(~subdat$Condition)
+    y <- DGEList(counts=assays(subdat)$counts, group = subdat$Condition)
+    y <- calcNormFactors(y)
+    y <- estimateDisp(y)
+    
+    y <- y[filterByExpr(y, design),]
+    
+    Results[[paste(i,j,sep = "_")]] <- exactTest(y)$table
+    Results[[paste(i,j,sep = "_")]] <- cbind(Results[[paste(i,j,sep = "_")]],p.adjust(Results[[paste(i,j,sep = "_")]][,3],method = "fdr"))
+    names(Results[[paste(i,j,sep = "_")]]) <- c("logFC","logCPM","P.Value","adj.P.Val")
+  }
+}
+```
+
+### Using a similar 
+```{r}
+
+p <- list()
+lms <- list()
+
+for(i in names(data_snRNA_seq)){
+sig <- unique(c(rownames(Results$vHC_Swim_45min[Results$vHC_Swim_45min$adj.P.Val <=0.05,]),rownames(Results$vHC_Swim_45min[Results$vHC_Swim_45min$adj.P.Val <= 0.05,])))
+dat <- data_snRNA_seq[[i]]
+sig <- intersect(sig,rownames(dat))
+#sig <- intersect(sig, rownames(dat[dat$p_adj.loc < 0.05,]))
+sig <- intersect(sig, rownames(dat[dat$logCPM > 3,]))
+
+corrdat <- data.frame(logFC.celltype = dat[sig,"logFC"], logFC.bulk = data_spl_seq[sig,"logFC"], significance = dat[sig,"p_adj.loc"])
+
+corrdat <- corrdat[order(-corrdat$significance),]
+range = 30
+prange = ceiling(max(abs(c(corrdat$logFC.celltype,corrdat$logFC.bulk))))
+
+lms[[i]] <- cor.test(corrdat$logFC.celltype,corrdat$logFC.bulk, method = "spearman")
+corv <- cor(corrdat$logFC.celltype, corrdat$logFC.bulk, method="spearman")
+
+eq <- substitute(~~italic(rho)~"="~b, 
+      list(b = format(corv , digits = 2)))
+eq <- as.character(as.expression(eq))
+
+p[[i]] <- ggplot(corrdat,aes(logFC.celltype,logFC.bulk, color = -log10(significance))) + 
+  geom_hline(yintercept = 0, color = "grey40") +
+  geom_vline(xintercept = 0, color = "grey40") +
+  geom_point(size =1) + 
+  scale_colour_gradientn(colours = c("black", "red2", "gold"),
+                         values = c(0, -log10(0.05)/range, 1),
+                         limits = c(0,range)) +
+  ggtitle(i)+
+  geom_text(data = corrdat[1,],x = 0, y = prange*0.8, label = eq, parse = TRUE, color = "black") +
+  scale_x_continuous(name = paste("logFC",i, sep = " "), 
+                     limits = c(-prange,prange), 
+                     breaks = c(-prange,0,prange)) +
+  scale_y_continuous(name = "logFC bulk unspliced", 
+                     limits = c(-prange,prange), 
+                     breaks = c(-prange,0,prange)) +
+  labs(colour="-log10(FDR)") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), panel.border = element_rect(fill = NA),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        plot.title = element_text(hjust = 0.5))+
+  guides(color = FALSE)
+
+
+}
+
+p_corrs <- gridExtra::grid.arrange(p$Astrocytes, p$`DG Granule Neurons`,p$Oligodendrocytes,p$`Excitatory Neurons`, p$Vascular,p$`Inhibitory Neurons`,p$OPC,p$Microglia, widths = c(1,1,1,1), layout_matrix = rbind(c(1, 2, 3, 4), c(5, 6,7,8)))
+plot(p_corrs)
+```
+```{r}
+sig <- unique(c(rownames(Results$vHC_Swim_45min[Results$vHC_Swim_45min$adj.P.Val <=0.05,]),rownames(Results$vHC_Swim_45min[Results$vHC_Swim_45min$adj.P.Val <= 0.05,])))
+sehm(SE[,SE$type == "spliced"],genes = sig, assayName = "corrected", 
+     gaps_at = c("Region","type"),
+     do.scale = T, 
+     anno_columns = c("TimePoint"), 
+     cluster_rows = T, main = "significant unspliced 45min genes in spliced data",)
+
+TS1 <- readRDS("../data/TimeSeriesFST.vHC.SE.rds")
+TS2 <- readRDS("../data/TimeSeriesFST.dHC.SE.rds")
+CB <- cbind(TS1[intersect(rownames(TS1),rownames(TS2)),],
+            TS2[intersect(rownames(TS1),rownames(TS2)),])
+CB <- svacor(CB, form = ~Region + TimePoint, form0 = ~Region)
+sehm(CB,genes = sig, 
+     gaps_at = c("Region"),
+     do.scale = T, 
+     anno_columns = c("TimePoint","Region"), 
+     cluster_rows = T, main = "significant unspliced 45min genes in time-series data", assayName = "corrected")
+```

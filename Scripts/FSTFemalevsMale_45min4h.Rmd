@@ -1,0 +1,294 @@
+---
+title: "FSTFemalevsMale_45min4h"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(edgeR)
+library(SummarizedExperiment)
+library(SEtools)
+library(plgINS)
+library(ggplot2)
+source("BioStatsfunctions_LvZ.R")
+```
+
+## Analysis of FST effects in females
+
+Let's start by plotting stress genes (45min significant in vHC) from the timeseries in the new data set
+
+```{r}
+SE <- readRDS("../data/SwimFemale45min4h.vHC.SE.rds")
+TS <- readRDS("../data/TimeSeriesFST.vHC.SE.rds")
+sg <- read.table("../metadata/TimeSeries_StatisticalResults.csv", sep = ";", header = T)
+sg <- sg[sg$Test == "vHC_Swim_45min" & sg$adj.P.Val <= 0.05,"ShortName"]
+CB <- cbind(SE[intersect(rownames(SE),rownames(TS)),],TS[intersect(rownames(SE),rownames(TS)),])
+CB <- CB[,order(CB$Experiment ,CB$Sex, CB$Condition, CB$TimePoint)]
+CB <- dosvacor(CB, form = ~Experiment + Sex + TimePoint, form0 = ~Experiment)
+sehm(CB,genes = sg, 
+     gaps_at = c("Experiment","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint"), 
+     cluster_rows = T, main = "significant genes from the time series at 45min in vHC",
+     assayName = "corrected")
+
+#Export
+pdf("FigureS3_sexeffects.pdf",width = 7, height = 6)
+sehm(CB,genes = sg, 
+     gaps_at = c("Experiment","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint"), 
+     cluster_rows = T, main = "significant genes from the time series at 45min in vHC",
+     assayName = "corrected")
+dev.off()
+```
+
+As we can see, the transcriptional response looks very similar in males and females and compared to the time-series results
+
+### Analysis of the 45 min timepoint
+Lets run a statistical analysis on FST vs Homecage in male and female at the 45 min timepoint
+
+```{r}
+SE2 <- SE[,SE$TimePoint != "4h"]
+
+design <- model.matrix(~SE2$Condition * SE2$Sex)
+
+y <- DGEList(counts=assays(SE2)$counts)
+y <- calcNormFactors(y)
+y <- estimateDisp(y,design)
+#filter out genes that are below 10 counts in more than 75% of samples
+keep <- rowSums(y$counts>10) >= (ncol(y) * 0.25)
+y <- y[keep, , keep.lib.sizes=FALSE]
+
+Results <- list()
+fit <- glmQLFit(y,design)
+for(i in colnames(design)[-1]){
+  Results[[i]] <- glmQLFTest(fit, i)
+}
+
+sg <- rownames(topTags(Results$`SE2$ConditionSwim`,p.value = 0.05,n = 1000))
+sehm(CB,genes = sg, 
+     gaps_at = c("Experiment","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint"), 
+     cluster_rows = T, main = "45min: significant swim genes",
+     assayName = "corrected")
+topTags(Results$`SE2$ConditionSwim`,p.value = 0.05,n = 1000)
+
+sg <- rownames(topTags(Results$`SE2$SexMale`,p.value = 0.05,n = 1000))
+sehm(CB,genes = sg, 
+     gaps_at = c("Experiment","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint"), 
+     cluster_rows = T, main = "45min: significant sex genes",
+     assayName = "corrected")
+topTags(Results$`SE2$SexMale`,p.value = 0.05,n = 1000)
+
+sg <- rownames(topTags(Results$`SE2$ConditionSwim:SE2$SexMale`))
+sehm(CB,genes = sg, 
+     gaps_at = c("Experiment","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint"), 
+     cluster_rows = T, main = "45min: top interaction genes",
+     assayName = "corrected")
+topTags(Results$`SE2$ConditionSwim:SE2$SexMale`)
+
+MAEdgeR(Results$`SE2$ConditionSwim`, main = "MAPlot Homecage vs Swim")
+MAEdgeR(Results$`SE2$SexMale`, main = "MAPlot Male vs Female")
+VolcanoPlotsEdgeR(Results, main = "Volcanoplots Swim * Sex at 45 minutes")
+
+#Export
+pdf("FigureS3_sexeffects_volcano.pdf",width = 7, height = 4)
+VolcanoPlotsEdgeR(Results, main = "Volcanoplots Swim * Sex at 45 minutes")
+dev.off()
+
+sg <- rownames(topTags(Results$`SE2$SexMale`,p.value = 0.05,n = 1000))
+pdf("FigureS3_sexeffects_sexgenes.pdf",width = 7, height = 6)
+sehm(CB,genes = sg, 
+     gaps_at = c("Experiment","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint"), 
+     cluster_rows = T, main = "45min: significant sex genes",
+     assayName = "corrected")
+dev.off()
+```
+
+### Analysis of the 4 hour timepoint
+Lets run a statistical analysis on FST vs Homecage in male and female at the 4h timepoint
+
+```{r}
+SE2 <- SE[,SE$TimePoint != "45min"]
+
+design <- model.matrix(~SE2$Condition * SE2$Sex)
+
+y <- DGEList(counts=assays(SE2)$counts)
+y <- calcNormFactors(y)
+y <- estimateDisp(y,design)
+#filter out genes that are below 10 counts in more than 75% of samples
+keep <- rowSums(y$counts>10) >= (ncol(y) * 0.25)
+y <- y[keep, , keep.lib.sizes=FALSE]
+
+Results <- list()
+fit <- glmQLFit(y,design)
+for(i in colnames(design)[-1]){
+  Results[[i]] <- glmQLFTest(fit, i)
+}
+
+sg <- rownames(topTags(Results$`SE2$ConditionSwim`))
+sehm(CB,genes = sg, 
+     gaps_at = c("Experiment","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint"), 
+     cluster_rows = T, main = "4h: top swim genes",
+     assayName = "corrected")
+topTags(Results$`SE2$ConditionSwim`)
+
+sg <- rownames(topTags(Results$`SE2$SexMale`))
+sehm(CB,genes = sg, 
+     gaps_at = c("Experiment","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint"), 
+     cluster_rows = T, main = "4h: top sex genes",
+     assayName = "corrected")
+topTags(Results$`SE2$SexMale`)
+
+sg <- rownames(topTags(Results$`SE2$ConditionSwim:SE2$SexMale`))
+sehm(CB,genes = sg, 
+     gaps_at = c("Experiment","Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint"), 
+     cluster_rows = T, main = "4h: top interaction genes",
+     assayName = "corrected")
+topTags(Results$`SE2$ConditionSwim:SE2$SexMale`)
+
+MAEdgeR(Results$`SE2$ConditionSwim`, main = "MAPlot Homecage vs Swim 4h")
+MAEdgeR(Results$`SE2$SexMale`, main = "MAPlot Male vs Female")
+VolcanoPlotsEdgeR(Results, main = "Volcanoplots Swim * Sex at 4h")
+
+#Export
+pdf("FigureS3_sexeffects_volcano_4h.pdf",width = 7, height = 4)
+VolcanoPlotsEdgeR(Results, main = "Volcanoplots Swim * Sex at 4h")
+dev.off()
+```
+
+
+### Analysis of 45 min timepoint with pooled data
+Lets run a statistical analysis on FST vs Homecage in male and female at the 45 min timepoint after pooling both the TS experiment and the male vs female
+
+```{r}
+SE2 <- SE[,SE$TimePoint != "4h"]
+TS2 <- TS[,TS$TimePoint %in% c("0min","45min")]
+
+CB <- cbind(SE2[intersect(rownames(SE2),rownames(TS2)),],TS2[intersect(rownames(SE2),rownames(TS2)),])
+CB <- CB[,order(CB$Sex ,CB$Condition, CB$TimePoint, CB$Experiment)]
+CB <- svacor(CB, form = ~Experiment + Sex * Condition, form0 = ~Experiment)
+
+design <- model.matrix(~CB$SV1 + CB$SV2 + CB$SV3 + CB$SV4 + CB$SV5 + CB$Experiment + CB$Condition * CB$Sex)
+
+
+y <- DGEList(counts=assays(CB)$counts)
+y <- calcNormFactors(y)
+y <- estimateDisp(y,design)
+#filter out genes that are below 10 counts in more than 75% of samples
+keep <- rowSums(y$counts>10) >= (ncol(y) * 0.25)
+y <- y[keep, , keep.lib.sizes=FALSE]
+
+Results <- list()
+fit <- glmQLFit(y,design)
+for(i in colnames(design)[-1]){
+  Results[[i]] <- glmQLFTest(fit, i)
+}
+
+sg <- rownames(topTags(Results$`CB$ConditionSwim`,p.value = 0.05,n = 1000))
+sehm(CB,genes = sg, 
+     gaps_at = c("Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint"), 
+     cluster_rows = T, 
+     main = "45min pooled: significant swim genes",assayName = "corrected")
+topTags(Results$`CB$ConditionSwim`,p.value = 0.05,n = 1000)
+
+sg <- rownames(topTags(Results$`CB$SexMale`,p.value = 0.05,n = 1000))
+sehm(CB,genes = sg, 
+     gaps_at = c("Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint"), 
+     cluster_rows = T, 
+     main = "45min pooled: significant sex genes",assayName = "corrected")
+topTags(Results$`CB$SexMale`,p.value = 0.05,n = 1000)
+
+sg <- rownames(topTags(Results$`CB$ConditionSwim:CB$SexMale`))
+sehm(CB,genes = sg, 
+     gaps_at = c("Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint"), 
+     cluster_rows = T, 
+     main = "45min pooled: top interactions",assayName = "corrected")
+topTags(Results$`CB$ConditionSwim:CB$SexMale`)
+
+
+MAEdgeR(Results$`CB$ConditionSwim`, main = "MAPlot Homecage vs Swim at 45min: pooled data")
+MAEdgeR(Results$`CB$SexMale`, main = "MAPlot Male vs Female at 45min: pooled data")
+VolcanoPlotsEdgeR(Results[7:9], main = "Volcanoplots Swim * Sex at 45 minutes: pooled data")
+```
+
+### Analysis of 4h timepoint with pooled data
+Lets run a statistical analysis on FST vs Homecage in male and female at the 4 min timepoint after pooling both the TS experiment and the male vs female
+
+```{r}
+SE2 <- SE[,SE$TimePoint != "45min"]
+TS2 <- TS[,TS$TimePoint %in% c("0min","4h")]
+
+CB <- cbind(SE2[intersect(rownames(SE2),rownames(TS2)),],TS2[intersect(rownames(SE2),rownames(TS2)),])
+CB <- CB[,order(CB$Sex ,CB$Condition, CB$TimePoint, CB$Experiment)]
+CB <- svacor(CB, form = ~Experiment + Sex * Condition, form0 = ~Experiment)
+
+design <- model.matrix(~CB$SV1 + CB$SV2 + CB$SV3 + CB$SV4 + CB$Experiment + CB$Condition * CB$Sex)
+
+y <- DGEList(counts=assays(CB)$counts)
+y <- calcNormFactors(y)
+y <- estimateDisp(y,design)
+#filter out genes that are below 10 counts in more than 75% of samples
+keep <- rowSums(y$counts>10) >= (ncol(y) * 0.25)
+y <- y[keep, , keep.lib.sizes=FALSE]
+
+Results <- list()
+fit <- glmQLFit(y,design)
+for(i in colnames(design)[-1]){
+  Results[[i]] <- glmQLFTest(fit, i)
+}
+
+sg <- rownames(topTags(Results$`CB$ConditionSwim`))
+sehm(CB,genes = sg, 
+     gaps_at = c("Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint"), 
+     cluster_rows = T, 
+     main = "4h pooled: top swim genes",assayName = "corrected")
+topTags(Results$`CB$ConditionSwim`)
+
+sg <- rownames(topTags(Results$`CB$SexMale`,p.value = 0.05,n = 1000))
+sehm(CB,genes = sg, 
+     gaps_at = c("Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint"), 
+     cluster_rows = T, 
+     main = "4h pooled: significant sex genes",assayName = "corrected")
+topTags(Results$`CB$SexMale`,p.value = 0.05,n = 1000)
+
+sg <- rownames(topTags(Results$`CB$ConditionSwim:CB$SexMale`))
+sehm(CB,genes = sg, 
+     gaps_at = c("Sex"),
+     do.scale = T, 
+     anno_columns = c("Experiment","Sex","Condition","TimePoint"), 
+     cluster_rows = T, 
+     main = "4h pooled: top interactions",assayName = "corrected")
+topTags(Results$`CB$ConditionSwim:CB$SexMale`)
+
+MAEdgeR(Results$`CB$ConditionSwim`, main = "MAPlot Homecage vs Swim at 4h: pooled data")
+MAEdgeR(Results$`CB$SexMale`, main = "MAPlot Male vs Female at 4h: pooled data")
+VolcanoPlotsEdgeR(Results[6:8], main = "Volcanoplots Swim * Sex at 4h: pooled data")
+```
