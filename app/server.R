@@ -18,9 +18,34 @@ tgl <- list()
 
 formatDEA <- function(x){
   for(f in colnames(x)){
-    if(is.numeric(x[[f]])) x[[f]] <- plgINS::dround(x[[f]])
+    if(is.numeric(x[[f]])) x[[f]] <- dround(x[[f]])
   }
   x
+}
+
+dround <- function (x, digits = 3, roundGreaterThan1 = FALSE) 
+{
+    if (is.matrix(x) || is.data.frame(x)) {
+        for (i in 1:ncol(x)) {
+            if (is.numeric(x[, i])) {
+                tryCatch({
+                  x[, i] <- dround(x[, i], digits, roundGreaterThan1)
+                }, error = function(e) warning(e))
+            }
+        }
+        return(x)
+    }
+    if (roundGreaterThan1) {
+        w <- 1:length(x)
+    }
+    else {
+        w <- which(abs(x) < 1)
+    }
+    if (length(w) == 0) 
+        return(x)
+    e <- ceiling(-log10(abs(x[w])))
+    x[w] <- round(10^e * x[w], digits - 1)/10^e
+    x
 }
 
 grepGene <- function(x,g){
