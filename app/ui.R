@@ -1,6 +1,4 @@
 library(shiny)
-library(DT)
-library(plotly)
 library(shinydashboard)
 library(shinycssloaders)
 
