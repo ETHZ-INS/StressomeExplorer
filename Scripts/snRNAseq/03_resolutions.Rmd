@@ -1,0 +1,149 @@
+---
+title: "stress snRNAseq - Exploration"
+author: "Pierre-Luc Germain"
+date: "9/3/2020"
+output:
+  html_document:
+    highlight: tango
+    code_folding:	hide
+---
+
+<style>
+  #content {
+    max-width: 1200px !important;
+  }
+</style>
+
+```{r}
+suppressPackageStartupMessages({
+  library(SingleCellExperiment)
+  library(scater)
+  library(cowplot)
+  library(muscat)
+  library(SEtools)
+  library(ComplexHeatmap)
+})
+```
+
+```{r}
+sce <- readRDS("SCE.clust.rds")
+```
+
+
+## Library sizes
+
+```{r, fig.height=4, fig.width=10}
+sce$log_counts <- log(sce$sum)
+plot_grid(
+  plotReducedDim(sce, dimred = "TSNE", colour_by="log_counts"),
+  plotReducedDim(sce, dimred = "UMAP", colour_by="log_counts"),
+  nrow=1)
+```
+
+## Putative doublets
+
+```{r, fig.height=8, fig.width=10}
+plot_grid(
+  plotReducedDim(sce, dimred = "TSNE", colour_by="scDblFinder.ratio"),
+  plotReducedDim(sce, dimred = "TSNE", colour_by="scDblFinder.class"),
+  plotReducedDim(sce, dimred = "UMAP", colour_by="scDblFinder.ratio"),
+  plotReducedDim(sce, dimred = "UMAP", colour_by="scDblFinder.class"),
+  nrow=2)
+```
+
+Some doublets are very clearly identifiable; in addition, there is a whole set of cells with (left on the UMAP) with suspiciously high ratio, we should keep an eye on those.
+
+```{r}
+sce <- sce[,sce$scDblFinder.class=="singlet"]
+```
+
+
+<br/><br/>
+
+*** 
+
+# Clustering
+
+## Identifiability
+
+```{r}
+cs <- metadata(sce)$cluster.stability
+resolutions <- sort(as.numeric(names(cs$global)))
+boxplot(cs$perCluster[as.character(resolutions)], xlab="Leiden resolution", ylab="Misclassification rate")
+lines(cs$global[as.character(resolutions)], lwd=2, col="blue")
+```
+
+
+## Clustering resolution {.tabset}
+
+```{r}
+genes <- list(
+  astrocytes = c("Aqp4", "Gfap", "Fgfr3","Dio2"),
+  endothelial = c("Cldn5","Nostrin","Flt1"),
+  microglia = c("C1qb","Tyrobp","Spp1","P2ry12", "Csf1r", "Irf8"),
+  neuronal = c("Snap25", "Stmn2", "Syn1", "Rbfox3", "Dlg4"),
+  neuronal_excitatory = c("Slc17a7","Camk2a","Grin2b","Fezf2"),
+  neuronal_inhibitory = c("Gad1","Lhx6","Adarb2"),
+  oligodendrocyte = c("Opalin","Plp1","Mag","Mog"),
+  OPC = c("Pdgfra","Sox6","Bcan"),
+  CPE = "Ttr",
+  misc=c("Eps8","Lama2")
+)
+genes2 <- lapply(genes, FUN=function(x) row.names(sce)[rowData(sce)$Symbol %in% x])
+mcols <- pipeComp::getQualitativePalette(length(genes2))
+names(mcols) <- names(genes2)
+
+prepPB <- function(sce, cl, genes2){
+  pb <- flattenPB(aggregateData(sce, "counts", by=c(cl,"sample_id")))
+  pb$logReadCount <- log(colSums(assay(pb)))
+  rowData(pb)$marker <- factor(NA, levels=names(genes2))
+  for(f in setdiff(names(genes2),"misc")) rowData(pb)[genes2[[f]],"marker"] <- f
+  metadata(pb)$anno_colors <- list(marker=mcols)
+  pb
+}
+```
+
+```{r results="asis", echo=FALSE, fig.height=4, fig.width=8}
+if(is.null(resolutions)) resolutions <- sort(as.numeric(gsub("SCT_snn_res\\.","",
+                 grep("SCT_snn_res", colnames(colData(sce)), value=TRUE))))
+for(i in resolutions){
+  cl <- paste0("SCT_snn_res.",i)
+  sce[[cl]] <- droplevels(sce[[cl]])
+  cat("### Resolution=",i,"\n\n")
+  print(plot_grid(
+      plotReducedDim(sce, dimred = "TSNE", colour_by=cl, text_by=cl) + theme(legend.position="none"),
+      plotReducedDim(sce, dimred = "UMAP", colour_by=cl, text_by=cl) + theme(legend.position="none"),
+      nrow=1, labels=rep(as.character(i),2)))
+  
+  cat("\n\n")
+}
+```
+
+## Clustering resolution - markers (pseudobulk) {.tabset}
+
+
+```{r results="asis", echo=FALSE, fig.height=8, fig.width=8}
+for(i in sort(resolutions)){
+  cl <- paste0("SCT_snn_res.",i)
+  cat("### Resolution=",i,"\n\n")
+  pb <- prepPB(sce, cl, genes2)
+  draw(sechm(pb, unlist(genes2), assayName="logcpm", do.scale=TRUE, anno_columns=c("n_cells","logReadCount"), gaps_at = c("cluster_id"), anno_rows = "marker", gaps_row=rowData(pb)$marker, row_names_gp = gpar(fontsize = 10)), annotation_legend_side="bottom", heatmap_legend_side="bottom", merge_legends=TRUE)
+  cat("\n\n")
+}
+```
+
+<br/><br/>
+***
+
+# Expression of known markers
+
+```{r, fig.height=11, fig.width=10}
+plot_grid(
+  plotReducedDim(sce, dimred = "TSNE", colour_by="SCT_snn_res.0.5", text_by = "SCT_snn_res.0.5") + theme(legend.position="none") + ggtitle("Clustering at res=0.5"),
+  plotReducedDim(sce, dimred = "TSNE", colour_by="ENSMUSG00000054252.Fgfr3"),
+  plotReducedDim(sce, dimred = "TSNE", colour_by="ENSMUSG00000027273.Snap25"),
+  plotReducedDim(sce, dimred = "TSNE", colour_by="ENSMUSG00000030209.Grin2b"),
+  plotReducedDim(sce, dimred = "TSNE", colour_by="ENSMUSG00000050121.Opalin"),
+  plotReducedDim(sce, dimred = "TSNE", colour_by="ENSMUSG00000041378.Cldn5"),
+  nrow=3)
+```

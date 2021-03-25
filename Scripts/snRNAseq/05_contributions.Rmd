@@ -1,0 +1,390 @@
+---
+title: "stress snRNAseq - relative contributions"
+author: "Pierre-Luc Germain"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+  html_document:
+    highlight: tango
+    code_folding:	hide
+---
+
+<style>
+  #content {
+    max-width: 1200px !important;
+  }
+</style>
+
+```{r}
+suppressPackageStartupMessages({
+  library(SingleCellExperiment)
+  library(edgeR)
+  library(cowplot)
+  library(ggplot2)
+  library(ggrepel)
+  library(SEtools)
+  library(ComplexHeatmap)
+  library(DT)
+  library(nnls)
+})
+options("SEtools_def_anno_colors"=list(condition=list("CTRL"="lightgray", "FST"="darkblue")))
+
+mydt <- function(x){
+  row.names(x) <- NULL
+  x <- plgINS::dround(x,roundGreaterThan1=TRUE)
+  datatable( x, filter="top", class="compact", extensions=c("Buttons","ColReorder"),
+             options=list(pageLength=30, dom = "fltBip", rownames=FALSE,
+                          colReorder=TRUE, 
+                          buttons=c('copy', 'csv', 'excel', 'csvHtml5') ) )
+}
+breakStrings <- function(x, minSizeForBreak = 20, lb = "\n"){
+    sapply(x, FUN = function(x){
+      if(is.na(x)) return(x)
+        if (nchar(x) <= minSizeForBreak) 
+            return(x)
+        g <- gregexpr(" ", x)[[1]]
+        if (length(g) == 0) 
+            return(x)
+        if (length(g) == 1 & all(g == -1)) 
+            return(x)
+        mid <- nchar(x)/2
+        mid <- g[order(abs(g - mid))[1]]
+        substr(x, mid, mid) <- lb
+        return(x)
+    })
+}
+```
+
+# Relative contributions of main cell types
+
+```{r}
+pb <- readRDS("pb.rds")
+pb <- log2FC(pb, fromAssay = "sct", controls = pb$condition=="CTRL", by=pb$cluster, isLog = TRUE)
+pb$condition <- relevel(pb$condition,"CTRL")
+pb <- pb[,order(pb$cluster, pb$condition)]
+pb$propCells <- pb$n_cells/rowsum(pb$n_cells, pb$scDblFinder.sample)[pb$scDblFinder.sample,1]
+pb <- log2FC(pb, fromAssay = "sct", controls = pb$condition=="CTRL", by=pb$cluster, isLog = TRUE)
+assays(pb)$sct.logFC <- assays(pb)$log2FC
+pb <- log2FC(pb, fromAssay = "logcpm", controls = pb$condition=="CTRL", by=pb$cluster)
+
+so <- readRDS("soups.SE.DEA.rds")
+deas <- readRDS("deas.rds")
+
+fst <- readRDS("~/bioinfo/bohacek/Lukas/old/acuteStress/data/TimeSeriesFST.split.rds")
+mm <- model.matrix(~Region+TimePoint, data=as.data.frame(colData(fst)))
+fst <- fst[filterByExpr(assays(fst)$unspliced,mm) | row.names(fst)=="Apold1",]
+dds <- calcNormFactors(DGEList(assays(fst)$unspliced))
+assays(fst)$logcpm <- log1p(edgeR::cpm(dds))
+fst <- SEtools::log2FC(fst, "logcpm", controls=fst$TimePoint=="0", by=fst$Region)
+dds <- estimateDisp(dds,mm)
+fit <- glmFit(dds,mm)
+dea.full <- as.data.frame(topTags(glmLRT(fit, coef = "TimePoint45min"), Inf))
+dea <- dea.full[dea.full$logCPM > 2 & dea.full$FDR<0.05,]
+dea$diff <- 2^dea$logFC*exp(dea$logCPM)-exp(dea$logCPM)
+```
+
+
+## Visual overview
+
+### Absolute expression in cell types of bulk DEGs
+
+Here we take the (unspliced) bulk DEGs, subset them to genes that are differentially-expressed in at least one cell type, and ask what is the absolute expression (in logcpm) of these genes across the different cell types:
+
+```{r, fig.width=10, fig.height=6}
+g <- unique(unlist(lapply(deas, FUN=function(x){
+  row.names(x)[(x$logCPM>3 & x$p_adj.loc<0.01) | 
+                 (x$logCPM>5 & x$p_val<0.01)]
+})))
+g <- g[grep("^mt-",g,invert=TRUE)]
+
+g <- intersect(row.names(dea), g)
+dea2 <- dea[g,]
+
+levels(pb$cluster) <- breakStrings(levels(pb$cluster), minSizeForBreak = 10)
+ll <- c(list(FST=fst[,fst$TimePoint %in% c("0","45min")]), lapply(split(seq_len(ncol(pb)), pb$cluster), FUN=function(x) pb[,x]), soup=so)
+ll[[1]]$condition <- ll[[1]]$Condition
+levels(ll[[1]]$condition) <- c("CTRL","FST")
+sechm(pb, row.names(dea2), do.scale=TRUE, assayName = "logcpm", breaks=0.99, column_title_gp = gpar(fontsize = 10), anno_columns=c("condition"), gaps_at="cluster", anno_row="bulk.logFC", anno_colors = list(bulk.logFC=circlize::colorRamp2(c(-2,0,2), colors=c("blue","black","yellow"))))
+```
+
+We see that the neurons' profiles are very similar, and astrocytes show some similarity to vascular cells as well. As observed with the ACTseq data, the bulk logFC matches the astrocytes profile best; in particular, most upregulated genes in the bulk are highest expressed in astrocytes.
+
+### LogFC in cell types of bulk DEGs
+
+We now do a similar plot but using the relative foldchanges in each cell (either calculated from VST-means, or from the sum of counts):
+
+```{r, fig.width=10, fig.height=6}
+rowData(pb)$bulk.logFC <- dea.full[row.names(pb),"logFC"]
+draw(sechm(pb, row.names(dea2), do.scale=FALSE, assayName = "sct.logFC", breaks=0.9996, gaps_at="cluster", column_title_gp = gpar(fontsize = 10), anno_columns=c("condition"), anno_row="bulk.logFC", anno_colors = list(bulk.logFC=circlize::colorRamp2(c(-2,0,2), colors=c("blue","black","yellow")))), merge_legend=TRUE)
+
+draw(crossHm(ll, row.names(dea2), do.scale=FALSE, assayName = "log2FC", breaks=0.98, uniqueScale = TRUE, column_title_gp = gpar(fontsize = 10), anno_columns=c("condition")), merge_legend=TRUE)
+```
+
+In terms of foldchanges, the cells types are more similar, and in general we see a good match with the bulk foldchanges.
+
+```{r, fig.width=9, fig.height=6}
+png("heatmaps.png", width=9, height=6, unit="in", res=200)
+plot_grid(
+  grid.grabExpr(draw(sechm(pb, row.names(dea2), do.scale=TRUE, assayName = "logcpm", breaks=0.99, column_title_gp = gpar(fontsize = 10), anno_columns=c("condition"), gaps_at="cluster", anno_row="bulk.logFC", anno_colors = list(bulk.logFC=circlize::colorRamp2(c(-2,0,2), colors=c("blue","black","yellow"))), row_title="Expression of\nbulk DEGs"), merge_legend=TRUE)),
+  grid.grabExpr(draw(sechm(pb, row.names(dea2), do.scale=FALSE, assayName = "sct.logFC", breaks=0.9996, gaps_at="cluster", column_title_gp = gpar(fontsize = 10), anno_columns=c("condition"), anno_row="bulk.logFC", anno_colors = list(bulk.logFC=circlize::colorRamp2(c(-2,0,2), colors=c("blue","black","yellow"))), row_title="Fold-change\nof bulk DEGs"), merge_legend=TRUE)),
+  nrow=2
+)
+dev.off()
+```
+
+
+
+## Linear decomposition of the bulk response
+
+### DWLS-based decomposition of the bulk profiles
+
+```{r}
+dds <- calcNormFactors(DGEList(assay(pb)))
+mm <- model.matrix(~cluster+condition, data=as.data.frame(colData(pb)))
+dds <- estimateDisp(dds,mm)
+cl.means <- sapply(split(1:ncol(pb), pb$cluster), FUN=function(x) rowMeans(assays(pb)$logcpm[,x]))
+cl.means <- cl.means[order(rowSds(cl.means), decreasing=TRUE),]
+cl.means <- cl.means[row.names(cl.means) %in% row.names(fst),]
+S <- exp(cl.means[1:500,])
+source("DWLS.R")
+props2 <- apply(exp(assays(fst)$logcpm[row.names(S),c(1:3,10:15)]), 2, FUN=function(x){
+  solveDampenedWLS(S,x)
+})
+p2 <- melt(props)
+p2$region <- colData(fst)[p2$Var2,"Region"]
+colnames(p2)[1] <- "celltype"
+ggplot(p2, aes(Var2, value, fill=celltype)) + geom_col() + facet_wrap(~region, scale="free_x", nrow=2) + theme(axis.text=element_blank(), axis.ticks=element_blank(), axis.line=element_blank()) + ylab("Proportion")
+```
+
+## Linear decomposition of the bulk response
+
+Here we first try to find a linear combination of the response of individual cell types which best reproduces the bulk (unspliced) differences (granule neurons are removed since they shouldn't be in the bulk):
+
+### Using nnls
+```{r}
+d <- sapply(deas, FUN=function(x){
+  #x$diff <- x$diff*(1-x$p_val)
+  x$diff[x$p_val>0.1] <- 0
+  x[g,"diff"]
+})
+d[is.na(d)] <- 0
+ld <- nnls(d, dea2$diff)
+
+
+# 
+# w <- rep(1,nrow(d))
+# recomp <- function(p){
+#   y <- colSums(t(d)*p)
+# }
+# rcost <- function(p){
+#   y <- recomp(p)
+#   sum(w*(y-dea2$diff)^2)
+# }
+# res <- list(
+#   optim(rep(1,ncol(d)), rcost, method="L-BFGS-B", lower=0)$par
+# )
+# for(i in 2:30){
+#   op <- res[[i-1]]
+#   w <- (1+median(dea2$diff))/(1+abs(dea2$diff-recomp(op)))
+#   o <- optim(op, rcost, method="L-BFGS-B", lower=0)
+#   print(o$value)
+#   res[[i]] <- o$par
+# }
+
+f <- ld$x/sum(ld$x)
+names(f) <- colnames(d)
+sl <- function(x) sign(x)*log(abs(x))
+LSD::heatscatter(sl(ld$fitted[,1]), sl(dea2$diff))
+treemap::treemap(data.frame(name=paste0(names(f), "\n(",round(f*100),"%)"), prop=f), "name", vSize = "prop", vColor = "prop", type="value", title="Proportion contribution based on linear decomposition")
+```
+
+This predicts a large contribution of astrocytes, and some neuronal contribution. However, the fit isn't great, most likely due to the different quantification (in the bulk we have to exclude most exonic reads). So we'll try an alternative approach.
+
+### Using DWLS
+
+```{r, eval=FALSE}
+d <- sapply(deas, FUN=function(x){
+  x$diff[x$p_val>0.2] <- 0
+  x <- x[g,"diff"]
+  x[sign(x)!=sign(dea2$diff)] <- 0
+  abs(x)
+})
+d[is.na(d)] <- 0
+resp <- abs(dea2$diff)
+row.names(d) <- names(resp) <- g
+resp <- resp[resp>0]
+d <- d[names(resp),]
+resp.pr <- solveDampenedWLS(d, resp)
+```
+
+
+## Assignment of genes to top cell-type
+
+Here we assign each bulk DEG a most likely cell-type:
+
+```{r, fig.width=8, fig.height=4}
+tbl2 <- dplyr::bind_rows(lapply(deas, FUN=function(x) data.frame(gene=row.names(x), x, stringsAsFactors=FALSE)),
+                         .id="cluster")
+tbl2 <- tbl2[order(tbl2$p_adj.loc),]
+tls <- rowsum(colSums(assay(pb)), pb$cluster)[,1]
+getTop <- function(x, field="diff", same.sign=field %in% c("logFC","diff"), ratio.ambiguous=0.5){
+  if(is.data.frame(x)){
+    x2 <- x$logFC
+    names(x2) <- row.names(x)
+    x <- x2
+  }
+  tbl2 <- tbl2[tbl2$gene %in% names(x) & tbl2$cluster!="DG Granule Neurons",]
+  tbl2$cluster <- breakStrings(tbl2$cluster,minSizeForBreak = 10)
+  tbl2$diff <- 2^tbl2$logFC*exp(tbl2$logCPM)-exp(tbl2$logCPM)*
+    tls[tbl2$cluster]/10^6*(1-tbl2$p_adj.loc)^2
+  if(same.sign){
+    tbl2 <- tbl2[sign(tbl2[[field]])==sign(x[tbl2$gene]),]
+  }
+  tbl2 <- tbl2[order(abs(tbl2[[field]]), decreasing=field %in% c("logFC","diff")),]
+  sec <- tbl2[duplicated(tbl2$gene),]
+  sec <- sec[!duplicated(sec$gene),]
+  tbl2 <- tbl2[!duplicated(tbl2$gene),]
+  row.names(tbl2) <- tbl2$gene
+  row.names(sec) <- sec$gene
+  tbl2$sec <- sec[row.names(tbl2),field]
+  tbl2$sec.clust <- sec[row.names(tbl2),"cluster"]
+  tbl2$sec.ratio <- abs(tbl2$sec/tbl2$diff)
+  tbl2$ambiguous <- abs(tbl2$sec/tbl2$diff)>ratio.ambiguous
+  tbl2$class <- as.character(tbl2$cluster)
+  tbl2$class2 <- ifelse(grepl("Neurons",tbl2$class),"Neuronal","Glia")
+  tbl2$class2[grep("Vascular", tbl2$class)] <- "Vascular"
+  tbl2$class[which(tbl2$ambiguous)] <- paste(tbl2$class2[which(tbl2$ambiguous)],"ambiguous",sep="\n")
+  tbl2$class[grep("Vascular", tbl2$class)] <- "Vascular"
+  tbl2[names(x),c("sec.clust","sec.ratio","ambiguous","cluster","class","class2")]
+}
+tmp <- getTop(dea2, ratio.ambiguous = 0.2)
+dea2[,colnames(tmp)] <- tmp
+dea2$nGenes <- 1
+treemap::treemap(dea2, c("class2","class"), vSize = "nGenes", vColor = "class2", type="index",
+                 title = "Number of significant genes best explained by each cell type")
+
+dea2$class[is.na(dea2$class)] <- "ambiguous"
+dea2$class2[is.na(dea2$class2)] <- "Ambiguous"
+dea2$class2 <- as.factor(dea2$class2)
+dd <- rbind( cbind(level="class", as.data.frame(table(dea2$class2))),
+             cbind(level="subclass", as.data.frame(table(tolower(dea2$class)))) )
+dd$class <- factor(dd$Var1, levels=unique(c(levels(dea2$class2),tolower(unique(dea2$class[order(dea2$class2)])))))
+cols <- c(Ambiguous="lightgrey", ambiguous="lightgrey", Glia="red4", "glia\nambiguous"="red4",  Neuronal="olivedrab4",
+          "neuronal\nambiguous"="olivedrab4", vascular="#7570B3", Vascular="#7570B3", "vascular\nambiguous"="#7570B3", 
+          "excitatory\nneurons"="limegreen", "inhibitory\nneurons"="springgreen", "astrocytes"="#D95F02",
+          "microglia"="red", oligodendrocytes="orange", opc="orangered")
+ggplot(dd, aes(level, Freq, fill=class)) + geom_col(width=1) + coord_polar("y") + scale_fill_manual(values=cols) + theme_void()
+```
+
+```{r, fig.height=8, fig.width=10}
+rowData(pb)$topCluster <- dea2[row.names(pb),"class2"]
+draw(sechm(pb, row.names(dea2), do.scale=FALSE, assayName = "sct.logFC", breaks=0.995, gaps_at="cluster", column_title_gp = gpar(fontsize = 10), anno_columns=c("condition"), anno_row=c("bulk.logFC"), anno_colors = list(bulk.logFC=circlize::colorRamp2(c(-1.2,0,1.2), colors=c("blue","black","yellow"))), toporder="topCluster", gaps_row = "topCluster"), merge_legend=TRUE)
+```
+
+
+## Top genes per cluster {.tabset}
+
+```{r results="asis", echo=FALSE, fig.height=6, fig.width=10}
+rowData(pb)[["bulk\nlogFC"]] <- rowData(pb)$bulk.logFC
+lengths(degs <- lapply(deas, FUN=function(x){
+  x <- row.names(x)[x$p_adj.glb<0.01]
+  x <- x[grep("^mt-",x,invert=TRUE)]
+  head(x,n=25)
+}))
+
+dohm <- function(genes, title, ...){
+  sechm(pb, genes, do.scale=FALSE, assayName = "sct.logFC", breaks=0.995, gaps_at="cluster", column_title_gp = gpar(fontsize = 10), anno_columns=c("condition"), anno_row=c("bulk.logFC"), anno_colors = list(bulk.logFC=circlize::colorRamp2(c(-1.2,0,1.2), colors=c("blue","black","yellow"))), row_title=title, ...)
+}
+for(i in names(degs)){
+  cat("### ", i,"\n\n")
+  draw(dohm(degs[[i]], i), merge_legend=TRUE)
+  cat("\n\n")
+}
+```
+
+<br/><br/>
+
+## Top heatmap
+
+```{r, fig.height=7.5, fig.width=12}
+dohm2 <- function(x, annorow_title_side="top", ...){
+  dohm(degs[[x]],x,name=paste0("logFC\n",x), row_names_gp=gpar(fontsize=10), column_title_rot=90, annorow_title_side=annorow_title_side, ...)
+}
+hs <- list(
+  astro=dohm2("Astrocytes", column_names_max_height=unit(8,"cm")),
+  oligo=dohm2("Oligodendrocytes", NA),
+  exci=dohm2("Excitatory Neurons"),
+  inh=dohm2("Inhibitory Neurons", NA),
+  vasc=dohm2("Vascular", NA)
+  )
+)
+topheatmap <- plot_grid(
+  grid.grabExpr(draw(hs$astro %v% hs$oligo, merge_legend=TRUE, show_annotation_legend=FALSE, show_heatmap_legend=FALSE)),
+  grid.grabExpr(draw(hs$exci %v% hs$inh %v% hs$vasc, merge_legend=TRUE, show_annotation_legend=FALSE, show_heatmap_legend=FALSE)),
+  nrow=1)
+
+pdf("topheatmap.pdf", width=12, height=7.5)
+topheatmap
+dev.off()
+```
+
+
+# Comparison with TRAP
+
+Bulk (unspliced) DEGs that are also DEGs in any cell type:
+
+```{r, fig.height=6, fig.width=9}
+dea.fst.all <- readRDS("../Lukas/acuteStress/data/TimeSeriesFST.DEAs.rds")$merged.45min
+m <- merge(dea.fst.all, dea2, by="row.names")
+SEs <- lapply(list(
+  "FST\nunspliced"=ll$FST[,order(ll$FST$condition)],
+  FST=readRDS("../christa/meta/Timeseries/DEA_Timeseries.rds"),
+  TRAP.inh=readRDS("../christa/meta/TRAP/DEA_TRAP_inh.rds"),
+  TRAP.exc=readRDS("../christa/meta/TRAP/DEA_TRAP_allexc.rds")
+), FUN=function(x){
+  if("sct.logFC" %in% assayNames(x))
+    assays(x)$logFC <- assays(x)$sct.logFC
+  assayNames(x) <- gsub("logFC","log2FC",assayNames(x))
+  x$condition <- as.factor(x$Condition!="Control")
+  levels(x$condition) <- c("CTRL","FST")
+  x
+})
+SEs[[1]]$cluster <- "bulk"
+SEs[[1]]$condition <- SEs[[1]]$Condition
+levels(SEs[[1]]$condition) <- c("CTRL","FST")
+SEs$FST$cluster <- "bulk"
+SEs$TRAP.inh$cluster <- "Inhibitory\nNeurons"
+SEs$TRAP.exc$cluster <- "Excitatory\nNeurons"
+SEs$scRNA.inh <- pb[,grep("Inhib",pb$cluster)]
+SEs$scRNA.exc <- pb[,grep("Excitatory",pb$cluster)]
+draw(crossHm(SEs, row.names(dea2), do.scale=FALSE, assayName = "log2FC", breaks=0.995, uniqueScale = FALSE, column_title_gp = gpar(fontsize = 10), anno_columns=c("condition")), merge_legend=TRUE)
+```
+
+DEGs in both the spliced and unspliced bulk data:
+
+```{r, fig.height=6, fig.width=9}
+m <- merge(dea.fst.all, dea.full, by="row.names")
+m <- m[m$FDR.x<0.1 & m$FDR.y<0.25 & sign(m$log2FC)==sign(m$logFC),]
+crossHm(SEs, m$Row.names, do.scale=FALSE, assayName = "log2FC", breaks=0.998, uniqueScale = FALSE, column_title_gp = gpar(fontsize = 10), anno_columns=c("condition"))
+```
+
+DEGs in the spliced bulk data and single-cell neurons:
+
+```{r, fig.height=5, fig.width=9}
+neu <- row.names(dea2)[dea2$class2=="Neuronal"]
+degs.spliced <- row.names(dea.fst.all)[dea.fst.all$FDR<0.2]
+degs <- intersect(unique(c(neu, tbl2[grepl("ry Neurons", tbl2$cluster) & tbl2$p_adj.loc<0.05 & tbl2$logCPM>2,"gene"])), degs.spliced)
+
+crossHm(SEs[-1], degs, do.scale=FALSE, assayName = "log2FC", breaks=0.998, uniqueScale = FALSE, column_title_gp = gpar(fontsize = 10), anno_columns=c("condition","Time"))
+```
+
+DEGs in both the spliced and unspliced bulk data and TRAP:
+
+```{r, fig.height=6, fig.width=9}
+dea.inh <- rowData(SEs$TRAP.inh)$DEA.inh
+dea.exc <- rowData(SEs$TRAP.exc)$DEA.merge
+degs.inh <- row.names(dea.inh)[dea.inh$FDR<0.1]
+degs.exc <- row.names(dea.exc)[dea.exc$FDR<0.1]
+degs <- intersect(unique(c(degs.inh,degs.exc)), degs.spliced)
+
+crossHm(SEs[-1], degs, do.scale=FALSE, assayName = "log2FC", breaks=0.998, uniqueScale = FALSE, column_title_gp = gpar(fontsize = 10), anno_columns=c("condition","Time"))
+```

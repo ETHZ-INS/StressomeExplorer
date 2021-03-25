@@ -1,0 +1,82 @@
+---
+title: "RNA degradation"
+author: "Pierre-Luc Germain"
+date: "8/17/2020"
+output: html_document
+---
+
+```{r}
+suppressPackageStartupMessages({
+  library(plgINS)
+  library(readxl)
+  library(edgeR)
+  library(ggplot2)
+  library(cowplot)
+})
+theme_set(theme_cowplot())
+
+CDplot <- function(ll, by=NULL, k=5, breaks=NULL, sameFreq=FALSE, addN=FALSE, dig.lab=NULL, ...){
+  if(!is.list(ll)){
+    if(is.null(by)) stop("If `ll` is not already a list, `by` should be given.")
+    if(length(by)!=length(ll)) stop("Lengths of ll and by differ.")
+    w <- which(!is.na(by) & !is.na(ll))
+    by <- by[w]
+    ll <- ll[w]
+    if(is.null(dig.lab)) dig.lab <- max(c(2,3-ceiling(log10(abs(mean(by))))))
+    if(is.null(breaks)) breaks <- k
+    if(sameFreq) breaks <- quantile(by, prob=seq(from=0, to=1, length.out=k+1), na.rm=TRUE)
+    ll <- split(ll, cut(by, breaks, dig.lab=dig.lab))
+  }
+  p <- format(suppressWarnings(ks.test(ll[[1]], rev(ll)[[1]])$p.value), digits=2)
+  message("KS p-value between first and last sets:\n", p)
+  d <- dplyr::bind_rows(lapply(ll, FUN=function(x){
+    data.frame( y=(seq_along(x)-1)/(length(x)-1),
+                x=sort(x) )
+  }), .id="Genesets")
+  d$Genesets <- factor(d$Genesets, levels=unique(d$Genesets))
+  if(addN) levels(d$Genesets) <- paste0(levels(d$Genesets), " (n=",as.numeric(table(d$Genesets)),")")
+  p <- ggplot(d, aes(x,y,colour=Genesets)) + 
+    geom_vline(xintercept=0, linetype="dashed") + geom_line(...)
+  p + ylab("Cumulative proportion")
+}
+```
+
+# Loading the FST data
+
+
+```{r}
+deas <- readRDS("data/TimeSeriesFST.DEAs.rds")
+dea <- as.data.frame(deas$merged.45min)
+```
+
+# Getting half-lives (Selbach's old paper)
+
+```{r}
+download.file("https://static-content.springer.com/esm/art%3A10.1038%2Fnature10098/MediaObjects/41586_2011_BFnature10098_MOESM304_ESM.xls", destfile = "Selbach_halflives.xls")
+suppressWarnings(e <- as.data.frame(read_excel("Selbach_halflives.xls")))
+hl2 <- as.numeric(e[,"mRNA half-life average [h]"])
+names(hl2) <- e[,"Gene Names"]
+dea$halflife <- hl2[row.names(dea)]
+```
+
+```{r}
+p1 <- CDplot(dea$log2FC, by=dea$halflife, breaks=c(1.7,5,9,12,18,40), sameFreq = FALSE, addN=TRUE, lwd=1.4) + xlim(-0.5,0.7) + scale_color_viridis_d() + labs(x="log2(foldchange) 45min after swim", colour="Half-life (h)") + theme(legend.position = c(0.6,.5))
+```
+
+
+
+```{r, fig.width=8, fig.height=4}
+dea$status <- ifelse(dea$log2FC<0,"downregulated","upregulated")
+dea$status[dea$FDR>0.05] <- "not significant"
+p2 <- ggplot(dea, aes(status, halflife, fill=status)) + geom_violin() + geom_boxplot(width=0.15) + ylab("Half-life (h)") + theme(legend.position = "none", axis.text.x = element_text(angle = 90, vjust = 0.5), axis.title.x = element_blank())
+
+plot_grid(p1,p2,labels = "AUTO", rel_widths = c(5,4))
+```
+
+```{r}
+dea2 <- dea[dea$log2FC<0 & dea$FDR<0.05 & !is.na(dea$halflife),]
+```
+
+
+Downregulated genes have a median half-life of `r (mhl <- mhl(median(dea2$halflife)))`, which corresponds to an expected reduction of `r 1-0.5^(0.75/mhl)` after 45min, which is consistent with the observed median downregulation of `r 1-2^median(dea2$log2FC)` for the same genes.
+

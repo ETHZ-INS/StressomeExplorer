@@ -1,0 +1,70 @@
+---
+title: "stress snRNAseq - Preprocessing and clustering"
+author: "Pierre-Luc Germain"
+date: "9/3/2020"
+output: html_document
+---
+
+```{r}
+suppressPackageStartupMessages({
+  library(SingleCellExperiment)
+  library(Seurat)
+  library(scater)
+  library(cowplot)
+  library(scDblFinder)
+})
+source("~/bioinfo/plg/test_clusterings.R")
+```
+
+```{r}
+sce <- readRDS("SCE.decont.rds")
+```
+
+# QC and preprocessing
+
+```{r}
+qc <- as.data.frame(colData(sce))
+ggplot(qc_dt, aes(sum)) + geom_histogram() + facet_wrap(~sample_id) + scale_x_log10() + labs(x="Total UMI count", y="Number of cells")
+ggplot(qc_dt, aes(detected)) + geom_histogram() + facet_wrap(~sample_id) + scale_x_log10() + labs(x="# Genes per cell", y="Number of cells")
+ggplot(qc, aes(subsets_mito_percent)) + geom_histogram(bins = 50) + facet_wrap(~sample_id) + labs(x="% Mitochondrial", y="Number of cells") + xlim(c(NA,60))
+ggplot(qc, aes(percent_top_50, subsets_mito_percent, colour=excluded)) + geom_point()
+
+sce <- scDblFinder(sce, clusters=sce$cluster, samples=sce$sample_id)
+sce$isOutlier <- isOutlier(sce$sum, log=TRUE, nmads=3) | isOutlier(sce$detected, log=TRUE, nmads=3) | isOutlier(sce$percent_top_50, log=TRUE, type="higher", nmads=3) | sce$subsets_mito_percent > 9
+```
+
+# Dim red and clustering
+
+```{r}
+se <- as.Seurat(sce[,!sce$isOutlier], data=NULL)
+se <- SCTransform(se, return.only.var.genes=FALSE)
+se <- RunPCA(se, verbose = FALSE)
+(dims <- intrinsicDimension::maxLikGlobalDimEst(se@reductions$pca@cell.embeddings, k=20, unbiased=TRUE)$dim.est)
+dims <- max(10,ceiling(dims))
+se <- RunTSNE(se, dims=1:dims)
+se <- RunUMAP(se, dims=1:dims)
+se <- FindNeighbors(se, reduction = "pca", dims=1:dims)
+resolutions <- c(0.01,0.1,0.15,0.2,0.25,0.3,0.4,0.5,0.6,0.8,1.25,1.5,2.4)
+for(r in resolutions){
+  se <- FindClusters(se, resolution=r)
+}
+(cl <- as.data.frame(t(
+  sapply(sort(resolutions), FUN=function(x){
+    c(resolution=x, nbClusters=length(levels(se[[paste0("SCT_snn_res.",x)]][,1])))
+  }))))
+
+RD <- rowData(sce)
+sce <- as.SingleCellExperiment(se, assay="SCT")
+rowData(sce) <- cbind(RD[row.names(sce),],rowData(sce))
+metadata(sce)$cluster.stability <- test_clusterings(sce, nthread=3)
+row.names(sce) <- paste(rowData(sce)$ID, rowData(sce)$Symbol,sep=".")
+saveRDS(sce, file="SCE.clust.rds")
+```
+
+
+# Session info
+
+```{r}
+devtools::session_info()
+```
+

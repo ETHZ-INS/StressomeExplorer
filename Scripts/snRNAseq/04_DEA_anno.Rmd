@@ -1,0 +1,385 @@
+---
+title: "stress snRNAseq - Annotation and DEA (res=0.25)"
+author: "Pierre-Luc Germain"
+date: "9/7/2020"
+output:
+  html_document:
+    highlight: tango
+    code_folding:	hide
+---
+
+<style>
+  #content {
+    max-width: 1200px !important;
+  }
+</style>
+
+```{r}
+suppressPackageStartupMessages({
+  library(SingleCellExperiment)
+  library(edgeR)
+  library(cowplot)
+  library(ggplot2)
+  library(ggrepel)
+  library(scran)
+  library(muscat)
+  library(SEtools)
+  library(ComplexHeatmap)
+  library(DT)
+  library(scClassify)
+})
+
+mydt <- function(x){
+  row.names(x) <- NULL
+  x <- plgINS::dround(x,roundGreaterThan1=TRUE)
+  datatable( x, filter="top", class="compact", extensions=c("Buttons","ColReorder"),
+             options=list(pageLength=30, dom = "fltBip", rownames=FALSE,
+                          colReorder=TRUE, 
+                          buttons=c('copy', 'csv', 'excel', 'csvHtml5') ) )
+}
+```
+
+```{r, eval=FALSE}
+sce <- readRDS("/mnt/plger/Linnarsson/HC.SCE.rds")
+sce <- sce[order(rowData(sce)$X_Total, decreasing=TRUE)[1:6000],]
+sce <- scater::logNormCounts(sce)
+mod1 <- train_scClassify(exprsMat_train=logcounts(h),
+                               cellTypes_train = h$TaxonomyRank4,
+                               selectFeatures = c("limma", "BI", "DD"),
+                               parallel=TRUE,
+                               BPPARAM = BiocParallel::MulticoreParam(6))
+sce$type <- paste(sce$TaxonomyRank4, sce$Neurotransmitter)
+mod2 <- train_scClassify(exprsMat_train=logcounts(h),
+                               cellTypes_train = h$type,
+                               selectFeatures = c("limma", "BI", "DD"),
+                               parallel=TRUE,
+                               BPPARAM = BiocParallel::MulticoreParam(6))
+```
+```{r, include=FALSE}
+mod1 <- readRDS("HC.scClassifyModel.rds")
+mod2 <- readRDS("HC.scClassifyModel.rds")
+```
+
+
+
+```{r, cache=TRUE}
+sce <- readRDS("SCE.clust.rds")
+sce$cluster <- droplevels(sce$SCT_snn_res.0.25)
+sce <- logNormCounts(sce)
+t1 <- predict_scClassify(logcounts(sce), mod1, similarity = c("pearson","spearman","cosine"))
+sce$scClass <- t1$ensembleRes$cellTypes
+sce$scClassify.score <- t1$ensembleRes$scores
+hi <- c(
+  "Telencephalon projecting excitatory neurons_Telencephalon inhibitory interneurons_Non-glutamatergic neuroblasts_Dentate gyrus granule neurons_Cerebellum neurons_Di- and mesencephalon excitatory neurons_Peptidergic neurons"="Neuronal",
+  "Telencephalon projecting excitatory neurons_Dentate gyrus granule neurons_Cerebellum neurons"="Neuronal",
+  "Vascular and leptomeningeal cells_Vascular smooth muscle cells_Pericytes_Vascular endothelial cells"="Vascular",
+  "Dentate gyrus radial glia-like cells_Subventricular zone radial glia-like cells_Astrocytes"="Glia",
+  "Pericytes_Vascular endothelial cells"="Vascular",
+  "Oligodendrocytes_Dentate gyrus radial glia-like cells_Subventricular zone radial glia-like cells_Oligodendrocyte precursor cells_Ependymal cells_Astrocytes"="Glia")
+
+sce$scClass2 <- sce$scClass
+w <- which(sce$scClass %in% names(hi))
+sce$scClass2[w] <- hi[sce$scClass[w]]
+sce$scMeta <- "Other"
+sce$scMeta[grep("euron",sce$scClass2)] <- "Neuronal"
+sce$scMeta[grep("Astrocytes|Glia|Oligodendrocyte|Microglia|Ependymal",sce$scClass2)] <- "Glia"
+sce$scMeta[grep("Pericytes|Perivascular|Vascular",sce$scClass2)] <- "Vascular"
+sce$scClass3 <- as.character(sce$scClass2)
+sce$scClass3[grep("inhibitory",sce$scClass2)] <- "Inhibitory"
+sce$scClass3[grep("excitatory|granule",sce$scClass2)] <- "Excitatory"
+sce$scClass3[grep("dendroc",sce$scClass2)] <- "Oligodendrocytes/OPC"
+sce$scClass3[grep("Pericytes|Perivascular|Vascular",sce$scClass2)] <- "Vascular"
+CD <- colData(sce)
+sce2 <- sce[,sce$scDblFinder.class!="doublet" & sce$scClassify.score>0.4]
+table(sce2$scClass2, sce2$cluster)
+```
+
+
+# Annotation
+
+```{r, cache=TRUE}
+sce <- readRDS("SCE.clust.rds")
+sce$cluster <- droplevels(CD$SCT_snn_res.0.25)
+sce$scClass <- droplevels(CD$scClass2)
+sce$scClass2 <- droplevels(as.factor(CD$scClass3))
+sce$scMeta <- droplevels(as.factor(CD$scMeta))
+sce$scClassify.score <- CD$scClassify.score
+sce <- sce[,sce$scDblFinder.class!="doublet"]
+
+pb <- flattenPB(aggregateData(sce, "counts", by=c("cluster","sample_id")))
+pb$logReadCount <- log(colSums(assay(pb)))
+pb2 <- flattenPB(aggregateData(sce, "logcounts", by=c("cluster","sample_id"), fun = "mean"))
+assays(pb)$sct <- assay(pb2)
+rm(pb2)
+
+ma <- findMarkers(sce, clusters=sce$cluster, test.type="binom")
+denovo <- lapply(ma, FUN=function(x) head(row.names(x)[x$FDR<0.01],3))
+genes <- list(
+  astrocytes = c("Aqp4", "Gfap", "Fgfr3","Dio2"),
+  endothelial = c("Cldn5","Nostrin","Flt1"),
+  microglia = c("C1qb","Tyrobp","P2ry12", "Csf1r", "Irf8"),
+  neuronal = c("Snap25", "Stmn2", "Syn1", "Rbfox3", "Dlg4"),
+  neuronal_excitatory = c("Slc17a7","Camk2a","Grin2b","Fezf2"),
+  neuronal_inhibitory = c("Gad1","Lhx6","Adarb2"),
+  oligodendrocyte = c("Opalin","Plp1","Mag","Mog"),
+  OPC = c("Pdgfra","Sox6","Bcan")
+)
+genes2 <- lapply(genes, FUN=function(x) row.names(sce)[rowData(sce)$Symbol %in% x])
+mcols <- pipeComp::getQualitativePalette(length(genes2))
+names(mcols) <- names(genes2)
+genes2$de.novo <- setdiff(unique(unlist(denovo)),unlist(genes2))
+
+rowData(pb)$marker <- factor(NA, levels=names(genes2))
+for(f in setdiff(names(genes2),"de.novo")) rowData(pb)[genes2[[f]],"marker"] <- f
+metadata(pb)$anno_colors <- list(marker=mcols)
+```
+
+We plot the aggregated expression if a combination of pre-defined markers and de-novo identified markers:
+
+```{r, fig.width=10, fig.height=12}
+draw(sechm(pb, unlist(genes2), assayName="sct", do.scale=TRUE, anno_columns=c("n_cells","logReadCount"), gaps_at = c("cluster_id"), anno_rows = "marker", gaps_row=rowData(pb)$marker, row_names_gp = gpar(fontsize = 10), cluster_rows = TRUE, cluster_cols = TRUE, show_rownames = TRUE), annotation_legend_side="bottom", heatmap_legend_side="bottom", merge_legends=TRUE)
+```
+
+```{r}
+(nn <- c(`0` = "Astrocytes", `1` = "Weird 1", `2` = "DG Granule Neurons", 
+`3` = "Oligodendrocytes", `4` = "Astrocytes", `5` = "Excitatory Neurons", 
+`6` = "Excitatory Neurons", `7` = "Vascular", `8` = "Inhibitory Neurons", 
+`9` = "Excitatory Neurons", `10` = "OPC", `11` = "Microglia", 
+`12` = "Weird 3", `13` = "Weird 2"))
+levels(sce$cluster) <- nn[levels(sce$cluster)]
+sce <- sce[,!grepl("Weird",sce$cluster)]
+sce$cluster <- droplevels(sce$cluster)
+pb <- flattenPB(aggregateData(sce[,!grepl("Weird",sce$cluster)], "counts", by=c("cluster","sample_id")))
+pb$logReadCount <- log(colSums(assay(pb)))
+pb2 <- flattenPB(aggregateData(sce[,!grepl("Weird",sce$cluster)], "logcounts", by=c("cluster","sample_id"), fun = "mean"))
+assays(pb)$sct <- assay(pb2)
+pb$cluster <- as.factor(pb$cluster_id)
+rm(pb2)
+pb <- pb[,order(pb$condition)]
+saveRDS(pb, file="pb.rds")
+```
+
+```{r, fig.width=10, fig.height=12}
+draw(sechm(pb, unlist(genes2), assayName="sct", do.scale=TRUE, anno_columns=c("n_cells","logReadCount"), gaps_at = c("cluster_id"), anno_rows = "marker", gaps_row=rowData(pb)$marker, row_names_gp = gpar(fontsize = 10), cluster_rows = TRUE, cluster_cols = TRUE, show_rownames = TRUE), annotation_legend_side="bottom", heatmap_legend_side="bottom", merge_legends=TRUE)
+```
+
+## Dorsal-ventral
+
+```{r, cache=TRUE}
+download.file("https://www.cell.com/cms/10.1016/j.neuron.2015.12.013/attachment/cce74f3a-42fb-4184-b574-80edf8aacf9b/mmc2.xls", "Cembrowski_DorsalVentral.xls")
+a <- readxl::read_excel("Cembrowski_DorsalVentral.xls")
+dv <- log1p(a$enrichedFpkm)-log1p(a$depletedFpkm)
+dv[which(a$enrichedRegion=="ventral")] <- dv[which(a$enrichedRegion=="ventral")]*-1
+names(dv) <- a$geneShortName
+dv <- dv[abs(dv)>1]
+dv.reg <- list(tfmode=rep(1,length(dv)), likelihood=dv)
+names(dv.reg$tfmode) <- names(dv.reg$likelihood)
+
+sce2 <- sce[order(rowSums(assay(sce)),decreasing=TRUE)[1:3000],]
+row.names(sce2) <- rowData(sce2)$Symbol
+vi <- viper::aREA(as.matrix(logcounts(sce2)), list(Dorsal=dv.reg))
+sce$dorsal <- vi$nes[1,]
+sce$dorsal2 <- sign(sce$dorsal)*sqrt(abs(sce$dorsal))
+```
+
+
+```{r, fig.width=9, fig.height=9, cache=TRUE}
+sce <- runTSNE(sce, dimred="PCA", n_dimred=10)
+sce <- runUMAP(sce, dimred="PCA", n_dimred=10)
+plot_grid(
+ plotReducedDim(sce, dimred = "TSNE", colour_by="cluster", text_by = "cluster") + theme(legend.position="none"),
+ plotReducedDim(sce, dimred = "UMAP", colour_by="cluster", text_by = "cluster") + theme(legend.position="none"),
+ plotReducedDim(sce, dimred = "TSNE", colour_by="dorsal2", text_by = "cluster"),
+ plotReducedDim(sce, dimred = "UMAP", colour_by="dorsal2", text_by = "cluster")
+)
+sce$cluster <- droplevels(sce$cluster)
+saveRDS(sce, file="SCE.clust.filt.rds")
+```
+
+```{r, fig.width=7, fig.height=5}
+pdf("TSNE.pdf", width=7, height=5)
+plotTSNE(sce, colour_by="cluster", text_by="cluster", point_alpha=0.5, add_legend=FALSE) + theme_void() + theme(legend.position="none")
+dev.off()
+```
+
+
+<br/><br/>
+
+# Pseudo-bulk differential state analysis
+
+```{r, fig.width=9, fig.height=9}
+sce <- readRDS("SCE.clust.filt.rds")
+sce$condition <- relevel(sce$condition, "CTRL")
+pb <- aggregateData(prepSCE(sce, "cluster", "sample_id", "condition"))
+res <- pbDS(pb, design=model.matrix(~group_id, data=as.data.frame(colData(pb))))
+pb2 <- readRDS("pb.rds")
+rowData(pb2)$symbol <- gsub("^.+\\.","",row.names(pb2))
+tbl <- res$table[[1]]
+tbl <- lapply(tbl, FUN=function(x) x[order(x$p_adj.loc),])
+tbl2 <- dplyr::bind_rows(tbl, .id="cluster")
+tbl2 <- tbl2[order(tbl2$p_adj.loc),]
+pb2 <- pb2[unique(tbl2$gene),]
+
+mydt(tbl2[tbl2$p_adj.loc<0.1,c("cluster","gene","logCPM","logFC","p_adj.loc")])
+top <- dplyr::bind_rows(lapply(tbl, FUN=function(x){
+  x <- x[x$logCPM>3 & x$p_adj.loc<0.05,]
+  head(x,n=5)
+}), .id="cluster")
+top$gene <- sapply(strsplit(top$gene,"\\."),FUN=function(x) x[2])
+ggplot(tbl2[tbl2$logCPM>3,], aes(logFC, -log10(p_adj.loc), colour=p_adj.loc>0.05)) + geom_point() + facet_wrap(~cluster, scales="free_y", nrow=4) + theme(legend.position = "none") + geom_text_repel(data=top, aes(label=gene))
+```
+
+## Top genes per cluster {.tabset}
+
+```{r results="asis", echo=FALSE, fig.height=8, fig.width=8}
+for(i in names(tbl)){
+  cat("### ", i,"\n\n")
+  g <- head(tbl[[i]][tbl[[i]]$p_adj.loc<0.05,"gene"],20)
+  draw(sechm(pb2[,pb2$cluster_id==i], g, assayName="logcpm", do.scale=TRUE, anno_columns=c("n_cells","logReadCount"), gaps_at = c("cluster_id"), anno_rows = "marker", gaps_row=rowData(pb)$marker, row_names_gp = gpar(fontsize = 10)), annotation_legend_side="bottom", heatmap_legend_side="bottom", merge_legends=TRUE)
+  cat("\n\n")
+}
+```
+
+<br/><br/>
+
+
+# Soup analysis
+
+```{r}
+so <- readRDS("soups.rds")
+e <- sapply(so, FUN=function(x) x$counts)
+row.names(e) <- row.names(so[[1]])
+so <- SummarizedExperiment(list(counts=e))
+so$condition <- "CTRL"
+so$condition[colnames(so) %in% c("SEQ00015_1","SEQ00015_3")] <- "FST"
+so <- so[order(rowSums(assay(so)), decreasing=TRUE),]
+conv <- data.frame(row.names=gsub("\\..+$","",row.names(sce)), symbol=gsub("^.+\\.","",row.names(sce)))
+sog <- as.character(conv[row.names(so),1])
+w <- which(!duplicated(sog) & !is.na(sog))
+so <- so[w,order(so$condition)]
+row.names(so) <- sog[w]
+dds <- calcNormFactors(DGEList(assay(so), group=so$condition))
+assays(so)$logcpm <- log1p(cpm(dds))
+so <- log2FC(so, "logcpm", controls = so$condition=="CTRL")
+dds <- dds[filterByExpr(dds),]
+dds <- estimateDisp(dds)
+et <- as.data.frame(topTags(exactTest(dds),Inf))
+do.show <- which((et$logFC>0 & et$FDR<0.05) | (et$logFC<0 & et$FDR<0.005))
+rowData(so) <- et[row.names(so),1:4]
+et$gene <- row.names(et)
+saveRDS(so, file="soups.SE.DEA.rds")
+
+ggplot(et, aes(logFC, -log10(FDR), colour=FDR>0.05)) + geom_point() + theme(legend.position = "none") +
+  geom_text_repel(data=et[do.show,], aes(label=gene))
+```
+
+
+
+```{r}
+tbl <- lapply(tbl, FUN=function(x){
+  x <- x[order(x$p_val),]
+  x$gene <- rowData(sce)[x$gene,"Symbol"]
+  x <- x[!duplicated(x$gene),]
+  row.names(x) <- x$gene
+  x$gene <- NULL
+  x$diff <- 2^x$logFC*exp(x$logCPM)-exp(x$logCPM)
+  x
+})
+pb2 <- pb2[!duplicated(rowData(pb2)$symbol),]
+row.names(pb2) <- rowData(pb2)$symbol
+fields <- c(logFC="logFC", logCPM="logCPM", PValue="p_val", FDR="p_adj.loc")
+for(ct in names(tbl)){
+  for(f in names(fields))
+    rowData(pb2)[[paste(f,gsub(" ","",ct),sep=".")]] <- tbl[[ct]][row.names(pb2),fields[f]]
+}
+rowData(pb2) <- as.data.frame(lapply(rowData(pb2)[,-1],roundGreaterThan1=TRUE, plgINS::dround))
+saveRDS(pb2, file="pb.rds")
+saveRDS(tbl, file="deas.rds")
+```
+
+
+## Cell-level
+
+```{r, fig.width=7, fig.height=5}
+deas <- readRDS(file="deas.rds")
+lengths(degs <- lapply(deas, FUN=function(x) row.names(x)[x$p_adj.loc<0.2]))
+sce <- sce[rowData(sce)$Symbol %in% unique(unlist(degs)),]
+sce <- sce[!duplicated(rowData(sce)$Symbol),]
+row.names(sce) <- rowData(sce)$Symbol
+logcounts(sce) <- as.matrix(logcounts(sce))
+sce <- log2FC(sce, "logcounts", controls=sce$condition=="CTRL", by=sce$cluster, isLog=TRUE)
+sce <- sce[,sce$condition!="CTRL"]
+
+sce$cell.score <- unlist(bplapply(1:ncol(sce), BPPARAM=MulticoreParam(3), FUN=function(x){
+  cl <- sce$cluster[x]
+  deg <- degs[[cl]]
+  mod <- lm.wfit(cbind(1,as.numeric(deas[[cl]][deg,"logFC"])), assays(sce)$log2FC[deg,x],
+               w=sqrt(0.1+counts(sce)[deg,x]))
+  coef(mod)[2]
+}))
+plotTSNE(sce, colour_by="cell.score")
+```
+
+### Comparison with bulk
+
+```{r}
+
+fst <- readRDS("~/bioinfo/bohacek/Lukas/acuteStress/data/TimeSeriesFST.split.rds")
+mm <- model.matrix(~Region+TimePoint, data=as.data.frame(colData(fst)))
+fst <- fst[filterByExpr(assays(fst)$unspliced,mm) | row.names(fst)=="Apold1",]
+dds <- calcNormFactors(DGEList(assays(fst)$unspliced))
+assays(fst)$logcpm <- log1p(edgeR::cpm(dds))
+fst <- SEtools::log2FC(fst, "logcpm", controls=fst$TimePoint=="0", by=fst$Region)
+dds <- estimateDisp(dds,mm)
+fit <- glmFit(dds,mm)
+dea <- as.data.frame(topTags(glmLRT(fit, coef = grep("TimePoint", colnames(mm), value=TRUE)), Inf))
+sig <- row.names(dea)[dea$FDR<0.05]
+
+sce <- readRDS("SCE.clust.filt.rds")
+sce <- sce[!duplicated(rowData(sce)$Symbol),]
+sce$condition <- relevel(sce$condition, "CTRL")
+sce <- sce[,order(sce$cluster, sce$condition)]
+row.names(sce) <- rowData(sce)$Symbol
+sce$TimePoint <- as.factor(sce$condition)
+levels(sce$TimePoint) <- c("0","45min")
+sce$Condition <- sce$condition
+levels(sce$Condition) <- c("Homecage","Swim")
+
+checkCT <- function(ct, ...){
+  astro <- sce[row.names(sce) %in% row.names(deas[[ct]])[deas[[ct]]$logCPM>=3],sce$cluster==ct]
+  logcounts(astro) <- as.matrix(logcounts(astro))
+  astro <- SEtools::log2FC(astro, "logcounts", controls=astro$condition=="CTRL")
+  sig2 <- head(intersect(sig,degs[[ct]]), 400)
+  ll <- list(bulk=fst)
+  ll[[ct]] <- astro
+  crossHm(ll, sig2, assayName="log2FC", do.scale=FALSE, uniqueScale=FALSE, breaks=0.999, ...)
+}
+checkCT("Oligodendrocytes", cluster_cols=TRUE)
+checkCT("Astrocytes", cluster_cols=TRUE)
+
+checkCT2 <- function(ct, modelBased=FALSE, degsOnly=TRUE, nG=500, ...){
+  astro <- sce[row.names(sce) %in% row.names(deas[[ct]])[deas[[ct]]$logCPM>=3],sce$cluster==ct]
+  logcounts(astro) <- as.matrix(logcounts(astro))
+  astro <- SEtools::log2FC(astro, "logcounts", controls=astro$condition=="CTRL")
+  sig2 <- intersect(sig,row.names(astro))
+  if(degsOnly) sig2 <- intersect(sig2,degs[[ct]])
+  if(!modelBased) sig2 <- head(sig2, nG)
+  e <- sortRows(assays(fst)$log2FC[sig2,])
+  sig2 <- row.names(e)
+  if(modelBased){
+    library(xgboost)
+    fit <- xgboost(t(e[,as.integer(fst$Condition) < 4]), 
+                   label=droplevels(fst$Condition[as.integer(fst$Condition) < 4]),
+                   nrounds=5, early_stopping_rounds=2, subsample=0.8, 
+                   objective="multi:softprob", num_class=3)
+    y <- as.numeric(cmdscale(dist(predict(fit, t(assays(astro)$log2FC[sig2,]), reshape=TRUE)), k=1))
+    sig2 <- head(xgb.importance(model=fit)$Feature, nG)
+    astro <- astro[,order(y)]
+  }else{
+    astro <- astro[,row.names(sortRows(t(assays(astro)$log2FC[sig2,]),na.rm=TRUE))]
+  }
+  sechm(fst, sig2, assayName="log2FC", breaks=0.999, cluster_rows=FALSE, sortRowsOn=NULL, anno_colors=annoColors(), anno_columns=c("TimePoint","Condition"), width=unit(5,"cm"), column_title="Bulk", ...) + 
+    sechm(astro, sig2, assayName="log2FC", breaks=0.999, cluster_rows=FALSE, sortRowsOn=NULL, anno_colors=annoColors(), anno_columns=c("TimePoint","Condition"), width=unit(5,"cm"), column_title=ct, ...) 
+}
+```
+

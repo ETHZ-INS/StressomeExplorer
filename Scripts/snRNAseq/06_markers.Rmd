@@ -1,0 +1,48 @@
+---
+title: "06 - markers' figure"
+author: "Pierre-Luc Germain"
+date: "3/1/2021"
+output: html_document
+---
+
+```{r}
+suppressPackageStartupMessages({
+  library(SingleCellExperiment)
+  library(edgeR)
+  library(SEtools)
+  library(ComplexHeatmap)
+})
+pb <- readRDS(file="pb.rds")
+```
+
+```{r}
+genes <- list(
+  astrocytes = c("Aqp4", "Gfap", "Fgfr3","Dio2"),
+  endothelial = c("Cldn5","Nostrin","Flt1"),
+  microglia = c("C1qb","Tyrobp","P2ry12", "Csf1r", "Irf8"),
+  neuronal = c("Snap25", "Stmn2", "Syn1", "Rbfox3", "Dlg4"),
+  neuronal_excitatory = c("Slc17a7","Camk2a","Grin2b","Fezf2"),
+  neuronal_inhibitory = c("Gad1","Lhx6","Adarb2"),
+  oligodendrocyte = c("Opalin","Plp1","Mag","Mog"),
+  OPC = c("Pdgfra","Sox6","Bcan")
+)
+mcols <- pipeComp::getQualitativePalette(length(genes))
+names(mcols) <- names(genes)
+
+rowData(pb)$marker <- factor(NA, levels=names(genes))
+for(mcat in names(genes)) rowData(pb)[intersect(genes[[mcat]],row.names(pb)), "marker"] <- mcat
+metadata(pb)$anno_colors <- list(marker=mcols)
+pb$cluster <- breakStrings(as.character(pb$cluster),10)
+pb <- pb[,order(pb$cluster,relevel(pb$condition,"CTRL"))]
+```
+
+```{r, fig.width=9, fig.height=8}
+h <- sechm(pb, unlist(genes), assayName="sct", do.scale=TRUE, anno_columns=c("n_cells","logReadCount","condition"), gaps_at = c("cluster"), anno_rows = "marker", gaps_row=rowData(pb)$marker, row_names_gp = gpar(fontsize = 11), column_title_gp= gpar(fontsize = 11), cluster_rows = FALSE, sortRowsOn=NULL, cluster_cols = FALSE, show_rownames = TRUE, name="Expression\nz-scores")
+draw(h, annotation_legend_side="bottom", heatmap_legend_side="bottom", merge_legends=TRUE)
+
+pdf("markers.pdf", width=9, height=8)
+draw(h, annotation_legend_side="bottom", heatmap_legend_side="bottom", merge_legends=TRUE)
+dev.off()
+```
+```
+

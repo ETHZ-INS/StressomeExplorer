@@ -1,0 +1,386 @@
+---
+title: "Timeseries FST short RNA analysis"
+date: "2020/08/03"
+output: html_document
+---
+
+```{r}
+suppressPackageStartupMessages({
+  library(readxl)
+  library(SummarizedExperiment)
+  library(ggplot2)
+  library(SEtools)
+  library(cowplot)
+  library(edgeR)
+  library(sva)
+  library(ggridges)
+})
+source("../Lukas/acuteStress/misc.R")  # for colours
+theme_set(theme_cowplot())
+```
+
+
+
+# Loading
+
+```{r}
+readSports <- function(folder){
+  a <- read.delim(list.files(folder, pattern="summary\\.txt$", full.names=TRUE))
+  lf <- list.files(folder, pattern="_length_distribution\\.txt$", recursive=TRUE, full.names=TRUE)
+  names(lf) <- gsub("_length_distribution\\.txt$", "", basename(lf))
+  ld <- lapply(lf, header=TRUE, FUN=read.delim)
+  ld.range <- range(unlist(lapply(ld, FUN=function(x) x[,2])))
+  ld.range <- as.character(seq(ld.range[1],ld.range[2]))
+  ld <- vapply(ld, FUN.VALUE=numeric(length(ld.range)), FUN=function(x){
+    x <- x[x[,1]=="Clean_Reads",]
+    row.names(x) <- x[,2]
+    y <- x[ld.range,3]
+    y[is.na(y)] <- 0
+    as.numeric(y)
+  })
+  row.names(ld) <- ld.range
+  lf <- list.files(folder, pattern="summary\\.txt$", recursive=TRUE, full.names=TRUE)
+  lf <- lf[grep("mismatch_summary", lf, invert=TRUE)]
+  names(lf) <- gsub("_summary\\.txt$", "", basename(lf))
+  e <- lapply(lf, FUN=function(x){
+    a <- read.delim(x, header=TRUE, stringsAsFactors = FALSE)
+    w <- c(which(a$Class!="-"),nrow(a)+1)
+    a$Class <- rep(a$Class[w[-length(w)]], sapply(seq(2,length(w)), FUN=function(i) w[i]-w[i-1]))
+    list(cl=a[a$Sub_Class=="-",-2], e=a[a$Sub_Class!="-",])
+  })
+  cl <- lapply(e, FUN=function(x){
+    y <- x$cl[,2]
+    names(y) <- x$cl[,1]
+    y
+  })
+  anno <- as.data.frame(do.call(rbind, lapply(e, FUN=function(x) x$e[,1:2])))
+  anno <- anno[!duplicated(anno),]
+  row.names(anno) <- paste(anno[,1],anno[,2],sep="/")
+  anno$source <- vapply(strsplit(as.character(anno$Class),"-"), 
+                        FUN.VALUE=character(1L), FUN=function(x) x[1])
+  anno$match <- grepl("_Match_Genome$",row.names(anno))
+  anno$Class <- gsub("_Match_Genome$|_Unmatch_Genome$|_3_end|_5_end|_CCA_end","",anno$Class)
+  anno <- anno[order(anno$source, anno$match, anno$Sub_Class),]
+  e <- vapply(e, FUN.VALUE=numeric(nrow(anno)), FUN=function(x){
+    x <- x$e
+    row.names(x) <- paste(x[,1],x[,2],sep="/")
+    x <- x[row.names(anno),3]
+    x[is.na(x)] <- 0
+    as.numeric(x)
+  })
+  colnames(e) <- names(lf)
+  row.names(e) <- row.names(anno)
+  se <- SummarizedExperiment::SummarizedExperiment( list(counts=e), rowData=anno )
+  for(f in c("Clean_Reads","Match_Genome","Unannotated_Match_Genome","Unannotated_Unmatch_Genome")){
+    se[[f]] <- vapply(cl, FUN.VALUE = numeric(1L), FUN=function(x) x[f])
+  }
+  metadata(se)$length_distributions <- ld
+  se
+}
+```
+
+```{r}
+se <- readSports("../sports/")
+e <- read_excel("Animals45Ctrl small RNA libraries.xlsx")
+colnames(se) <- gsub("20200709.A-","",colnames(se),fixed=TRUE)
+colnames(se) <- gsub("_R1","",colnames(se),fixed=TRUE)
+e <- as.data.frame(e[which(e$`New sample ID KG` %in% colnames(se)),])
+row.names(e) <- e$`New sample ID KG`
+e <- e[colnames(se),]
+
+se$region <- factor(grepl("dHC$",e$`Sample name`), c(TRUE,FALSE), labels=c("dHC","vHC"))
+se$condition <- factor(as.numeric(gsub("dHC|vHC","",e$`Sample name`)) %in% c(1,12,13,22,25,36,37,44), c(TRUE,FALSE), labels=c("CTRL","Swim_45min"))
+se$h20 <- e$h20
+colData(se) <- cbind(colData(se), e[,1+seq(which(colnames(e)=="New sample ID KG"),
+                                           which(colnames(e)=="water"))])
+saveRDS(se, file="sports.SE.rds")
+```
+
+# Overview
+
+```{r, fig.width=8, fig.height=5}
+se <- readRDS("sports.SE.rds")
+ld <- metadata(se)$length_distributions
+dl <- reshape2::melt(t(t(ld)/colSums(ld)), varnames=c("length","sample"), value.name="proportion")
+rl <- ggplot(dl, aes(length, proportion, colour=sample)) + geom_line() + 
+    scale_color_discrete(guide=FALSE) + labs(x="Read length", y="Proportion of (deduplicated) reads") + xlim(c(15,45))
+rl
+```
+
+```{r, fig.width=10, fig.height=7}
+se2 <- aggSE(se,"Class", rowDatFuns = NULL)
+dc <- reshape2::melt(assay(se2), varnames=c("class","sample"), value.name="count")
+dc$proportion <- dc$count / colSums(assay(se2))[as.character(dc$sample)]
+ds <- cbind(data.frame(sample=colnames(se), mapping_rate=se$Match_Genome/se$Clean_Reads),
+            as.data.frame(colData(se)))
+
+dc$sample2 <- as.integer(gsub("[a-zA-Z]","",as.character(dc$sample)))
+dc$sample2 <- factor(dc$sample2,levels=unique(sort(dc$sample2)))
+lsp <- ggplot(dc, aes(sample2, count, fill=class)) + geom_col() + coord_flip() + ylab("Mapped (deduplicated) reads") + xlab("Samples")
+
+plot_grid(
+  ggplot(dc, aes(sample, proportion, fill=class)) + geom_col() + coord_flip() + theme(legend.position = "none"),
+  ggplot(dc, aes(sample, count, fill=class)) + geom_col() + coord_flip() + theme(axis.text.y=element_blank(), axis.title.y = element_blank()) + ylab("Read count"),
+  ggplot(ds, aes(sample, mapping_rate, fill=)) + geom_col() + coord_flip() + theme(axis.text.y=element_blank(), axis.title.y = element_blank()) + ylab("Mapping rate"),
+  nrow=1, rel_widths = c(6,5,3))
+```
+
+We eliminate sample 24:
+
+```{r}
+se <- se[,colnames(se) != "smallRNA24"]
+se <- se[,order(se$region, se$condition)]
+dds <- calcNormFactors(DGEList(assay(se)), method="RLE")
+assays(se)$logcpm <- log1p(cpm(dds))
+se <- log2FC(se, "logcpm", se$condition=="CTRL", by=se$region)
+plgINS::plPCA(assays(se)$logcpm, shapeBy = se$region, colorBy = se$condition, add.labels = FALSE)
+plgINS::plPCA(assays(se)$logcpm, colorBy = paste(se$region,se$condition), shapeBy = factor(se$`Library prep start date`), add.labels = FALSE)
+```
+
+
+# DEA - separate
+
+## Ventral
+
+```{r}
+se.vHC <- se[,se$region=="vHC"]
+dds <- calcNormFactors(DGEList(assay(se.vHC), group = se.vHC$condition))
+se.vHC <- se.vHC[filterByExpr(assay(se.vHC), group = se.vHC$condition),]
+dds <- dds[row.names(se.vHC),]
+dds <- estimateDisp(dds,)
+et.vHC <- as.data.frame(topTags(exactTest(dds),Inf))
+et.vHC$Class <- rowData(se)[row.names(et.vHC),"Class"]
+head(et.vHC)
+ggplot(et.vHC, aes(logCPM, logFC, colour=-log10(PValue), shape=Class)) + geom_point()
+sehm(se.vHC, row.names(et.vHC)[1:10], assay="log2FC", do.scale=FALSE, anno_columns = c("condition","region","Clean_Reads"), gaps_at="region")
+```
+
+## Dorsal
+
+```{r}
+se.dHC <- se[,se$region=="dHC"]
+dds <- calcNormFactors(DGEList(assay(se.dHC), group = se.dHC$condition))
+se.dHC <- se.dHC[filterByExpr(assay(se.dHC), group = se.dHC$condition),]
+dds <- dds[row.names(se.dHC),]
+dds <- estimateDisp(dds,)
+et.dHC <- as.data.frame(topTags(exactTest(dds),Inf))
+et.dHC$Class <- rowData(se)[row.names(et.dHC),"Class"]
+head(et.dHC)
+ggplot(et.dHC, aes(logCPM, logFC, colour=-log10(PValue), shape=Class)) + geom_point()
+sehm(se.dHC, row.names(et.dHC)[1:10], assay="log2FC", do.scale=FALSE, anno_columns = c("condition","region","Clean_Reads"), gaps_at="region")
+```
+
+# DEA - merged
+
+```{r, fig.width=8}
+mm <- model.matrix(~region*condition, data=as.data.frame(colData(se)))
+se <- se[filterByExpr(assay(se), mm),]
+sv <- svaseq(assay(se), mm, mm[,1:2])
+colnames(sv$sv) <-  paste0("SV",1:ncol(sv$sv))
+colData(se) <- cbind(colData(se), sv$sv)
+mm <- model.matrix(~SV1+SV2+region*condition, data=as.data.frame(colData(se)))
+dds <- calcNormFactors(DGEList(assay(se)))
+assays(se)$logcpm <- log1p(cpm(dds))
+se <- log2FC(se, "logcpm", se$condition=="CTRL", by=se$region)
+dds <- estimateDisp(dds,mm)
+fit <- glmFit(dds,mm)
+lrt <- glmLRT(fit, coef=c("conditionSwim_45min","regionvHC:conditionSwim_45min"))
+lrt <- as.data.frame(topTags(lrt, Inf))
+head(lrt[,c(1,2,5:6)])
+lrt$Class <- rowData(se)[row.names(lrt),"Class"]
+ggplot(lrt, aes(logCPM, logFC.conditionSwim_45min, colour=-log10(PValue), shape=Class)) + geom_point()
+
+sehm(se, row.names(lrt)[1:10], assay="log2FC", do.scale=FALSE, anno_columns = c("condition","region","Clean_Reads"), gaps_at="region")
+```
+
+## Focusing on consistent changes across regions:
+
+```{r, fig.width=8}
+mm <- model.matrix(~SV1+SV2+region+condition, data=as.data.frame(colData(se)))
+dds <- calcNormFactors(DGEList(assay(se)))
+assays(se)$logcpm <- log1p(cpm(dds))
+se <- log2FC(se, "logcpm", se$condition=="CTRL", by=se$region)
+dds <- estimateDisp(dds,mm)
+fit <- glmFit(dds,mm)
+lrt <- glmLRT(fit, coef=c("conditionSwim_45min"))
+lrt <- as.data.frame(topTags(lrt, Inf))
+head(lrt[,c(1,4:5)])
+lrt$Class <- rowData(se)[row.names(lrt),"Class"]
+ggplot(lrt, aes(logCPM, logFC, colour=-log10(PValue), shape=Class)) + geom_point()
+lrt$gene <- unlist(lapply(strsplit(row.names(lrt),"/"), FUN=function(x) rev(x)[1]))
+candidates <- head(row.names(lrt)[grepl("miRNA",row.names(lrt)) & lrt$logCPM>8],10)
+MAplot <- ggplot(lrt, aes(logCPM, logFC, colour=-log10(PValue), shape=Class)) + geom_point(size=2) + scale_colour_viridis_c(direction=-1) + geom_text_repel(data=lrt[candidates,], aes(label=gene))
+
+volcano <- ggplot(lrt, aes(logFC, -log10(FDR), shape=Class, colour=logCPM)) + geom_hline(yintercept=-log10(0.05), linetype="dashed") + geom_point(size=2) + scale_colour_viridis_c(direction=-1) +  geom_text_repel(data=lrt[candidates,], aes(label=gene), nudge_y=c(0.2,0.12), nudge_x=c(seq(from=-0.2,to=0.2,length.out=length(candidates)-1),-0.3), min.segment.length=0) + annotate("text", x=0, y=-log10(0.05)-0.03, label="FDR 0.05")
+
+cand2 <- unlist(lapply(strsplit(candidates,"/"),FUN=function(x) rev(x)[1]))
+se2 <- se[candidates,]
+row.names(se2) <- unlist(lapply(strsplit(candidates,"/"),FUN=function(x) rev(x)[1]))
+h <- sechm(se2, row.names(se2), assay="logcpm", do.scale=TRUE, anno_columns = c("condition"), gaps_at="region",
+      anno_colors=list(condition=c("CTRL"="lightgrey", "Swim_45min"="darkred")), breaks=TRUE)
+```
+
+# Target enrichment analysis
+
+```{r}
+CDplot <- function(ll, by=NULL, k=5, breaks=NULL, sameFreq=FALSE, addN=FALSE, dig.lab=NULL, ...){
+  vcols <- FALSE
+  if(!is.list(ll)){
+    if(is.null(by)) stop("If `ll` is not already a list, `by` should be given.")
+    if(length(by)!=length(ll)) stop("Lengths of ll and by differ.")
+    w <- which(!is.na(by) & !is.na(ll))
+    by <- by[w]
+    ll <- ll[w]
+    if(is.null(dig.lab)) dig.lab <- max(c(2,3-ceiling(log10(abs(mean(by))))))
+    if(is.null(breaks)) breaks <- k
+    if(sameFreq) breaks <- quantile(by, prob=seq(from=0, to=1, length.out=k+1), na.rm=TRUE)
+    if(!is.integer(by)) vcols <- TRUE
+    ll <- split(ll, cut(by, breaks, dig.lab=dig.lab))
+  }
+  p <- format(suppressWarnings(ks.test(ll[[1]], rev(ll)[[1]])$p.value), digits=2)
+  message("KS p-value between first and last sets:\n", p)
+  d <- dplyr::bind_rows(lapply(ll, FUN=function(x){
+    data.frame( y=(seq_along(x)-1)/(length(x)-1),
+                x=sort(x) )
+  }), .id="Genesets")
+  d$Genesets <- factor(d$Genesets, levels=unique(d$Genesets))
+  if(addN) levels(d$Genesets) <- paste0(levels(d$Genesets), " (n=",as.numeric(table(d$Genesets)),")")
+  p <- ggplot(d, aes(x,y,colour=Genesets)) + 
+    geom_vline(xintercept=0, linetype="dashed") + geom_line(...) + 
+    ylab("Cumulative proportion")
+  if(vcols) p <- p + scale_colour_manual(values=setNames(viridis::cividis(length(ll)), names(ll)))
+  p
+}
+
+ksp <- function(dea, TS, seeds){
+  seeds <- as.character(seeds)
+  if(is.null(names(seeds))) names(seeds) <- seeds
+  sapply(seeds, FUN=function(seed){
+    ts <- TS[TS$set==seed,]
+    dea$sites <- 0
+    dea[as.character(ts$feature),"sites"] <- ts$sites
+    ll <- split(sign(dea$log2FC)*-log10(dea$FDR), dea$sites)
+    if(length(ll)==0) return(NA_real_)
+    bg <- ll[[1]]
+    ll <- rev(ll)
+    targets <- ll[[1]]
+    ttitle <- paste0(">=",names(ll)[1]," sites")
+    i <- 2
+    while(length(targets)<10 & i<length(ll)){
+      targets <- c(targets, ll[[i]])
+      i <- i + 1
+    }
+    if(length(targets)<2) return(NA_real_)
+    suppressWarnings(ks.test(targets, bg)$p.value)
+  })
+}
+cdw <- function(dea, ts, binary=FALSE, signal="log2FC", ...){
+  ts <- ts[ts$feature %in% row.names(dea),]
+  dea$sites <- 0
+  dea[as.character(ts$feature),"sites"] <- ts$sites
+  if(is.null(signal)){
+    signal <- sign(dea$log2FC)*-log10(dea$FDR)
+  }else{
+    signal <- dea[[signal]]
+  }
+  if(binary){
+    ll <- split(dea$log2FC, dea$sites>0)
+  }else{
+    tmp <- cut(dea$sites, breaks=c(0,0.5,1,2,Inf),include.lowest=TRUE)
+    levels(tmp) <- c("0","1","2",">2")
+    ll <- split(signal, tmp)
+  }
+  CDplot(ll, sameFreq = TRUE, ...) + labs(colour="# sites")
+}
+cdw2 <- function(dea, ts, k=5, ...){
+  i <- intersect(row.names(dea), ts$feature)
+  ts <- ts[ts$feature %in% i,]
+  row.names(ts) <- ts$feature
+  dea <- dea[i,]
+  dea$score <- ts[i,"score"]
+  CDplot(dea$log2FC, dea$score, k=k, dig.lab=2, ...) + 
+  xlim(c(-1.5,1.5)) + labs(colour="targetScan\ncontext score", x="log2(foldchange) at 1h30")+
+    scale_color_discrete()   viridis::cividis(5)
+}
+```
+
+## At 45min
+
+```{r, fig.height=10, fig.width=8}
+TS <- readRDS("~/bioinfo/extDat/20201102_Targetscan_Mouse_AllSites_mouse.rds")
+fams <- metadata(TS)$families
+names(fams) <- tolower(names(fams))
+# subset to top 15 miRNA candidates:
+fams <- fams[grep(paste(paste0(head(grep("^mmu-",lrt$gene,value=TRUE),10),"-"),collapse="|"),names(fams))]
+deas <- readRDS("../../Lukas/acuteStress/data/TimeSeriesFST.DEAs.rds")
+dea <- deas$merged.45min
+seeds <- fams
+seed.p <- sort(ksp(dea, TS, seeds))
+seed.p[which(seed.p < 0.05)]
+seeds <- unique(names(seed.p)[which(seed.p < 0.05)])
+
+
+CDplot(dea[i,"log2FC"],totsites[i], sameFreq=TRUE, k=4, lwd=1.5, breaks=c(0,1,2,Inf),dig.lab=4) + 
+  xlim(c(-1.5,1.5)) + labs(colour="Total # sites\nfor any miRNA", x="log2(foldchange) at 1h30")
+
+pl <- lapply(head(seeds), FUN=function(x){
+  tit <- paste0(names(fams)[fams==x], " (",x,")")
+  cdw(dea, TS[TS$set==as.character(x),], lwd=1.5) + xlim(-1,1) + 
+    ggtitle(tit) + xlab("log2(foldchange) at 45min") + 
+    theme(legend.position = c(0.7, 0.25))
+})
+plot_grid(plotlist=pl, nrow=3)
+```
+
+## At 1h30min
+
+```{r, fig.height=10, fig.width=8}
+dea <- deas$merged.1h30min
+seeds <- fams
+seed.p <- sort(ksp(dea, TS, seeds))
+seed.p[which(seed.p < 0.05)]
+seeds <- names(seed.p)[which(seed.p < 0.05)]
+pl <- lapply(head(seeds), FUN=function(x){
+  tit <- paste0(names(fams)[fams==x], " (",x,")")
+  cdw(dea, TS[TS$set==as.character(x),], lwd=1.5) + xlim(-1,1) + 
+    ggtitle(tit) + xlab("log2(foldchange) at 1h30min") + 
+    theme(legend.position = c(0.7, 0.25))
+})
+plot_grid(plotlist=pl, nrow=3)
+```
+
+
+## Control on the total number of sites
+
+```{r}
+totsites <- table(TS$feature)
+totsites <- setNames(as.numeric(totsites),names(totsites))
+i <- intersect(row.names(dea), names(totsites))
+
+CDplot(dea[i,"log2FC"],totsites[i], sameFreq=TRUE, k=4, lwd=1.5, breaks=c(0,1,2,Inf),dig.lab=4) + 
+  xlim(c(-1.5,1.5)) + labs(colour="Total # sites\nfor any miRNA", x="log2(foldchange) at 1h30")
+```
+
+### Control with scores
+
+```{r}
+tsag <- aggregate(TS[,"score",drop=FALSE], by=list(feature=TS$feature), FUN=sum)
+cdw2(dea, tsag, lwd=1.5, sameFreq=TRUE, k=5) + xlim(-0.5,0.5)
+```
+
+
+# Figure
+
+```{r, fig.height=11, fig.width=10}
+p <- plot_grid(rl, 
+          #MAplot + theme(legend.position="top") + scale_shape(guide=FALSE), 
+          grid.grabExpr(draw(h, merge_legend=TRUE)),
+          lsp + theme(legend.position="top") + guides(fill=guide_legend(nrow=3)), 
+          volcano + theme(legend.position="bottom", legend.box="vertical"),
+          labels=c("A","C","B","D"), rel_widths=c(3,5), scale=0.9, rel_heights=c(4,6))
+pdf("miRNA_plot.pdf", width=10, height=11)
+p
+dev.off()
+p
+```
+

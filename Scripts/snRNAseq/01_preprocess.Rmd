@@ -1,0 +1,71 @@
+---
+title: "stress snRNAseq - Re-clustering"
+author: "Pierre-Luc Germain"
+date: "15/09/2020"
+output: html_document
+---
+
+```{r}
+suppressPackageStartupMessages({
+  library(SingleCellExperiment)
+  library(Seurat)
+  library(DropletUtils)
+  library(scater)
+  library(SoupX)
+  library(scDblFinder)
+  library(xgboost)
+})
+data("ctrlgenes", package = "pipeComp")
+source("test_clusterings.R")
+```
+
+```{r}
+lf <- list.files("/mnt/guests/SEQ00015", pattern="matrix\\.mtx\\.gz", full.names=TRUE, recursive=TRUE)
+unf <- dirname(lf[grep("filtered",lf,invert=TRUE)])
+lf <- dirname(lf[grep("filtered",lf)])
+names(unf) <- names(lf) <- basename(gsub("_sc3Pv3/outs/filtered_feature_bc_matrix","",lf,fixed=TRUE))
+
+sce <- read10xCounts(lf, col.names=TRUE)
+sce$fast.cluster <- fastcluster(sce) # will be used for soupX only
+rowData(sce)$isMito <- row.names(sce) %in% ctrlgenes$mouse$ensembl$Mt
+sce <- scater::addPerCellQC(sce, subset=list(mito=rowData(sce)$isMito))
+sce$sample_id <- factor(sce$Sample)
+sce$Barcode <- sce$Sample <- NULL
+rowData(sce)$Type <- NULL
+
+conditions <- c("SEQ00015_1"="FST", "SEQ00015_2"="CTRL", "SEQ00015_3"="FST", "SEQ00015_4"="CTRL")
+sce$condition <- sce$sample_id
+levels(sce$condition) <- conditions[levels(sce$condition)]
+
+SCEs <- lapply(split(seq_len(ncol(sce)), sce$sample_id), FUN=function(x) sce[,x])
+rm(sce)
+
+soups <- list()
+for(x in names(SCEs)){
+  su <- counts(read10xCounts(unf[x], col.names=TRUE))
+  sc <- SoupChannel(su,counts(SCEs[[x]]))
+  rm(su)
+  sc <- setClusters(sc, SCEs[[x]]$fast.cluster)
+  sc <- autoEstCont(sc)
+  counts(SCEs[[x]]) <- adjustCounts(sc)
+  soups[[x]] <- sc$soupProfile
+}
+saveRDS(soups, file="soups.rds")
+sce <- do.call(cbind, SCEs)
+saveRDS(sce, file="SCE.decont.rds")
+```
+
+# Checking cluster stabiliy
+
+```{r}
+(metadata(sce)$clust.stability <- test_clusterings(sce, nthread=10))
+saveRDS(sce, file="SCE.decont.clust.rds")
+```
+
+
+# Session info
+
+```{r}
+devtools::session_info()
+```
+
