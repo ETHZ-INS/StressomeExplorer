@@ -1,6 +1,7 @@
 library(shiny)
 library(shinydashboard)
 library(shinycssloaders)
+library(waiter)
 
 shinyUI( dashboardPage(
 
@@ -16,6 +17,7 @@ shinyUI( dashboardPage(
     )
   ),
   dashboardBody(
+    use_waiter(), waiter_show_on_load(),
     tagList(
       tags$head(
         tags$style(".inlineInputs div { display:inline-block; }"),
@@ -61,7 +63,10 @@ shinyUI( dashboardPage(
                   p("AS = acute stress"),
                   collapsible = T, collapsed = T),
               box(title="single-nucleus RNA-seq", width=12,
-                              withSpinner(plotOutput("snrna_plot", width=600, height=800)))
+              #     selectInput("snRNA_assay", "Normalization",
+              #       choices=c("Pseudo-bulk logCPM"="logcpm",
+              #                 "Averaged sctransform residuals"="sct")),
+              withSpinner(plotOutput("snrna_plot", width=600, height=800)))
     ),
     tabItem("tab_prot",
             column(12,tags$h3(textOutput("gene_name_prot"))),
@@ -85,7 +90,7 @@ shinyUI( dashboardPage(
     ),
       tabItem("tab_phos_pep",
               column(12,tags$h3(textOutput("gene_name_phospep"))),
-              box(title = "Experimental design",width = 12, 
+              box(title = "Experimental design",width = 12,
                   plotOutput("EDphos2", height = "200px"),
                   p("adult male (2-3 months) C57BL/6 mice"),
                   p("vHC = ventral hippocampus, dHC = dorsal hippocampus, AS = acute stress"),

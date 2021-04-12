@@ -3,6 +3,7 @@ library(SummarizedExperiment)
 library(SEtools)
 library(ggplot2)
 library(cowplot)
+library(waiter)
 
 data_dir <- "../data"
 fig_dir <- "../fig"
@@ -23,7 +24,7 @@ formatDEA <- function(x){
   x
 }
 
-dround <- function (x, digits = 3, roundGreaterThan1 = FALSE) 
+dround <- function (x, digits = 3, roundGreaterThan1 = FALSE)
 {
     if (is.matrix(x) || is.data.frame(x)) {
         for (i in 1:ncol(x)) {
@@ -41,7 +42,7 @@ dround <- function (x, digits = 3, roundGreaterThan1 = FALSE)
     else {
         w <- which(abs(x) < 1)
     }
-    if (length(w) == 0) 
+    if (length(w) == 0)
         return(x)
     e <- ceiling(-log10(abs(x[w])))
     x[w] <- round(10^e * x[w], digits - 1)/10^e
@@ -101,7 +102,7 @@ shinyServer(function(input, output, session) {
   PlotHeight_Phospep <- reactive(
     return(200 +100 * sum(rowData(phos)$GeneSymbol == input$gene_input,na.rm = T))
   )
-  
+
   ############
   ### START Experimental design images
 output$EDTS <- renderImage({
@@ -140,9 +141,9 @@ output$EDTS <- renderImage({
     list(src = paste0(fig_dir,"/Figure5_EXPERIMENTALDESIGN.png"),width = 290,
          height = 110)
   }, deleteFile = FALSE)
-  
+
   ### END Experimental design images
-  ############ 
+  ############
 
   ############
   ### START GENE PLOT
@@ -283,10 +284,10 @@ output$EDTS <- renderImage({
   output$phospho_pep_plot <- renderPlot(height = function(){PlotHeight_Phospep()},{
 
     subset <- phos[which(rowData(phos)$GeneSymbol == input$gene_input),]
-    
+
     int_breaks <- function(x, n = 10) {
       l <- pretty(x, n)
-      l[abs(l %% 1) < .Machine$double.eps ^ 0.5] 
+      l[abs(l %% 1) < .Machine$double.eps ^ 0.5]
     }
 
     if(nrow(subset) > 0){
@@ -438,21 +439,28 @@ output$EDTS <- renderImage({
   ############
 
   output$snrna_plot <- renderPlot({
-    cdat <- SEtools::meltSE(SN, input$gene_input, assayName="logcpm")
+    # use.assay <- input$snRNA_assay
+    use.assay <- "logcpm"
+    cdat <- SEtools::meltSE(SN, input$gene_input, assayName=use.assay)
     if(nrow(cdat) > 0){
     levels(cdat$condition) <- c("Homecage", "Swim 45min")
-    p1 <- ggplot(cdat, aes(cluster, logcpm, color = cluster)) + geom_point(position = position_jitterdodge()) +
-      theme_bw() +
-      theme(legend.position="none") +
-      labs(x="", y="sctransform-normalized expression") +
+    y_lab <- switch(use.assay,
+      logcpm="log(CPM+1)",
+      sct="sctransform-normalized expression",
+      "expression")
+    p1 <- ggplot(cdat, aes(cluster, logcpm, color = cluster)) +
+      geom_point(position = position_jitterdodge()) +
+      theme_bw() + theme(legend.position="none") +
+      labs(x="", y=y_lab) +
       ggtitle("Expression in cell types (pooled groups)")
-    p2 <- ggplot(cdat, aes(condition, logcpm, color=condition)) + geom_point(position = position_jitterdodge()) + facet_wrap(~cluster, scales="free_y") +
+    p2 <- ggplot(cdat, aes(condition, logcpm, color=condition)) +
+      geom_point(position = position_jitterdodge()) +
+      facet_wrap(~cluster, scales="free_y") +
       scale_color_manual(values = c("#441C53","#24798F")) +
-      theme_bw() +
-      theme(legend.position="none") +
-      labs(x="", y="sctransform-normalized expression") +
+      theme_bw() + theme(legend.position="none") +
+      labs(x="", y=y_lab) +
       ggtitle("Expression after acute stress")
-    
+
     if(input$select_plottype == "violin plot"){
       p1 <- p1 + geom_violin()
     }else if(input$select_plottype == "box plot"){
@@ -461,7 +469,7 @@ output$EDTS <- renderImage({
     if(input$select_plotpoints){
       p1 <-p1 + geom_point(position = position_jitterdodge())
     }
-    
+
     plot_grid(p1,p2,ncol = 1, rel_heights = c(1,3))
     }else{
       ggplot() + ggtitle(paste("No snRNA data for ", input$gene_input, sep = ""))
@@ -469,5 +477,6 @@ output$EDTS <- renderImage({
 
   })
 
+  waiter_hide()
 })
 
