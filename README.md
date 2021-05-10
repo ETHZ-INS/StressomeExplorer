@@ -4,6 +4,11 @@ This app enables the inspection of raw data associated with the publication (REF
 The user can input the name of a gene of interest and data across datasets will be presented in a intuitive way.
 There are three different types of datasets that can be inspected, transcriptomic, proteomic and phospho-proteomic.
 
+a runing web based version (no installation required) can be found under https://bohaceklab.hest.ethz.ch/StressomeExplorer
+
+Further, scripts and results related to the publication (REF) can be found in the /Results and /Scripts Folders
+
+## Install
 To install the app on your local computer, simply downlad the ziped repository and extract its contents. Ensure R is installed on your computer. Then, install all required packages (see package versions below).
 
 To launch the app, use:
@@ -12,10 +17,6 @@ shiny::runApp('/path/app')
 ```
 
 A new window will open with a pre-selected gene and associated plots. on the top right, a selection box will enable to change the gene. Initialization of the app may take a few seconds (<20), changing the gene may take a few seconds (<10).
-
-a runing web based version (no installation required) can be found under https://bohaceklab.hest.ethz.ch/StressomeExplorer
-
-Further, scripts and results related to the publication (REF) can be found in the /Results and /Scripts Folders
 
 ## System Info (used for testing and compatible with the code)
 
