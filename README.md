@@ -15,6 +15,7 @@ To launch the app, use:
 ```{r}
 shiny::runApp('/path/app')
 ```
+where '/path/app' is the directory location of the StressomeExplorer/app folder on your computer (i.e C:/Users/Default/Downloads/StressomeExplorer/app)
 
 A new window will open with a pre-selected gene and associated plots. on the top right, a selection box will enable to change the gene. Initialization of the app may take a few seconds (<20), changing the gene may take a few seconds (<10).
 
