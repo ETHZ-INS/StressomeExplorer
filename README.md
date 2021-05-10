@@ -11,7 +11,7 @@ Further, scripts and results related to the publication (REF) can be found in th
 ## Install
 To install the app on your local computer, simply downlad the ziped repository and extract its contents. Ensure R is installed on your computer. Then, install all required packages (see package versions below).
 
-To launch the app, use:
+To launch the app, open R and use:
 ```{r}
 shiny::runApp('/path/app')
 ```
