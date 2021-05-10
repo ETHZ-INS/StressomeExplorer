@@ -11,6 +11,8 @@ shiny::runApp('/path/app')
 
 A new window will open with a pre-selected gene and associated plots. on the top right, a selection box will enable to change the gene
 
+a runing web based version (no installation required) can be found under https://bohaceklab.hest.ethz.ch/StressomeExplorer
+
 Further, scripts and results related to the publication (REF) can be found in the /Results and /Scripts Folders
 
 ## System Info (used for testing and compatible with the code)
