@@ -26,7 +26,7 @@ Platform: x86_64-pc-linux-gnu (64-bit)
 
 Running under: Ubuntu 18.04 LTS
 
-## Package versions
+## Package versions used for testing
 
 shiny_1.6.0
 
