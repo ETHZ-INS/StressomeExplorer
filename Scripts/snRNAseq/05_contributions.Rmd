@@ -265,6 +265,8 @@ treemap::treemap(dea2, c("class2","class"), vSize = "nGenes", vColor = "class2",
 dea2$class[is.na(dea2$class)] <- "ambiguous"
 dea2$class2[is.na(dea2$class2)] <- "Ambiguous"
 dea2$class2 <- as.factor(dea2$class2)
+write.table(cbind(gene=row.names(dea2), dea2[,-ncol(dea2)]), "contributions_bytop.tab", row.names=FALSE, col.names=TRUE, sep="\t", quote=FALSE)
+
 dd <- rbind( cbind(level="class", as.data.frame(table(dea2$class2))),
              cbind(level="subclass", as.data.frame(table(tolower(dea2$class)))) )
 dd$class <- factor(dd$Var1, levels=unique(c(levels(dea2$class2),tolower(unique(dea2$class[order(dea2$class2)])))))
