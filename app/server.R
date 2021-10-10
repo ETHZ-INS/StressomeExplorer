@@ -443,6 +443,15 @@ output$EDTS <- renderImage({
     use.assay <- "logcpm"
     cdat <- SEtools::meltSE(SN, input$gene_input, assayName=use.assay)
     if(nrow(cdat) > 0){
+      sigs <- sapply(rowData(SN)[input$gene_input,unique(cdat$cluster_id)], FUN=function(x){
+        if(is.null(x$FDR) || is.na(x$FDR)) return("")
+        if(x$FDR < 0.01) return("***")
+        if(x$FDR < 0.05) return("**")
+        if(x$PValue < 0.01) return("*")
+        return("")
+      })
+      levels(cdat$cluster) <- paste(levels(cdat$cluster),
+                                    sigs[gsub("\n"," ",levels(cdat$cluster))])
     levels(cdat$condition) <- c("Homecage", "Swim 45min")
     y_lab <- switch(use.assay,
       logcpm="log(CPM+1)",
@@ -458,7 +467,8 @@ output$EDTS <- renderImage({
       facet_wrap(~cluster, scales="free_y") +
       scale_color_manual(values = c("#441C53","#24798F")) +
       theme_bw() + theme(legend.position="none") +
-      labs(x="", y=y_lab) +
+      labs(x="", y=y_lab, 
+           subtitle = "*** FDR<0.01;  ** FDR<0.05;  * unadjusted p-value < 0.01") +
       ggtitle("Expression after acute stress")
 
     if(input$select_plottype == "violin plot"){
@@ -470,7 +480,7 @@ output$EDTS <- renderImage({
       p1 <-p1 + geom_point(position = position_jitterdodge())
     }
 
-    plot_grid(p1,p2,ncol = 1, rel_heights = c(1,3))
+    plot_grid(p1, p2, nrow=2, rel_heights = c(1,3))
     }else{
       ggplot() + ggtitle(paste("No snRNA data for ", input$gene_input, sep = ""))
     }
