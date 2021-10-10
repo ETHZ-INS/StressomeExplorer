@@ -450,8 +450,6 @@ output$EDTS <- renderImage({
         if(x$PValue < 0.01) return("*")
         return("")
       })
-      levels(cdat$cluster) <- paste(levels(cdat$cluster),
-                                    sigs[gsub("\n"," ",levels(cdat$cluster))])
     levels(cdat$condition) <- c("Homecage", "Swim 45min")
     y_lab <- switch(use.assay,
       logcpm="log(CPM+1)",
@@ -462,6 +460,9 @@ output$EDTS <- renderImage({
       theme_bw() + theme(legend.position="none") +
       labs(x="", y=y_lab) +
       ggtitle("Expression in cell types (pooled groups)")
+    
+    levels(cdat$cluster) <- paste(levels(cdat$cluster),
+                                  sigs[gsub("\n"," ",levels(cdat$cluster))])
     p2 <- ggplot(cdat, aes(condition, logcpm, color=condition)) +
       geom_point(position = position_jitterdodge()) +
       facet_wrap(~cluster, scales="free_y") +
