@@ -6,7 +6,7 @@ There are three different types of datasets that can be inspected, transcriptomi
 
 a runing web based version (no installation required) can be found under https://bohaceklab.hest.ethz.ch/StressomeExplorer
 
-Further, scripts and results related to the publication (REF) can be found in the /Results and /Scripts Folders
+Further, scripts and results related to the publication (https://www.biorxiv.org/content/10.1101/2021.03.26.436970v1) can be found in the /Results and /Scripts Folders
 
 ## Install
 To install the app on your local computer, simply downlad the ziped repository and extract its contents. Ensure R is installed on your computer. Then, install all required packages (see package versions below).
