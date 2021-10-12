@@ -1,6 +1,6 @@
 # StressomeExplorer
 
-This app enables the inspection of raw data associated with the publication (REF) on a per gene basis.
+This app enables the inspection of raw data associated with the publication (https://www.biorxiv.org/content/10.1101/2021.03.26.436970v1) on a per gene basis.
 The user can input the name of a gene of interest and data across datasets will be presented in a intuitive way.
 There are three different types of datasets that can be inspected, transcriptomic, proteomic and phospho-proteomic.
 
