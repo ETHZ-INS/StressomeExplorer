@@ -58,13 +58,13 @@ breakStrings <- function(x, minSizeForBreak = 20, lb = "\n"){
 
 ```{r}
 pb <- readRDS("pb.rds")
-pb <- log2FC(pb, fromAssay = "sct", controls = pb$condition=="CTRL", by=pb$cluster, isLog = TRUE)
+pb <- SEtools::log2FC(pb, fromAssay = "sct", controls = pb$condition=="CTRL", by=pb$cluster, isLog = TRUE)
 pb$condition <- relevel(pb$condition,"CTRL")
 pb <- pb[,order(pb$cluster, pb$condition)]
 pb$propCells <- pb$n_cells/rowsum(pb$n_cells, pb$scDblFinder.sample)[pb$scDblFinder.sample,1]
-pb <- log2FC(pb, fromAssay = "sct", controls = pb$condition=="CTRL", by=pb$cluster, isLog = TRUE)
+pb <- SEtools::log2FC(pb, fromAssay = "sct", controls = pb$condition=="CTRL", by=pb$cluster, isLog = TRUE)
 assays(pb)$sct.logFC <- assays(pb)$log2FC
-pb <- log2FC(pb, fromAssay = "logcpm", controls = pb$condition=="CTRL", by=pb$cluster)
+pb <- SEtools::log2FC(pb, fromAssay = "logcpm", controls = pb$condition=="CTRL", by=pb$cluster)
 
 so <- readRDS("soups.SE.DEA.rds")
 deas <- readRDS("deas.rds")
@@ -265,7 +265,7 @@ treemap::treemap(dea2, c("class2","class"), vSize = "nGenes", vColor = "class2",
 dea2$class[is.na(dea2$class)] <- "ambiguous"
 dea2$class2[is.na(dea2$class2)] <- "Ambiguous"
 dea2$class2 <- as.factor(dea2$class2)
-write.table(cbind(gene=row.names(dea2), dea2[,-ncol(dea2)]), "contributions_bytop.tab", row.names=FALSE, col.names=TRUE, sep="\t", quote=FALSE)
+write.table(cbind(gene=row.names(dea2), dea2[,-ncol(dea2)]), "contributions_bytop.tab", row.names=FALSE, col.names=TRUE, sep="\t", quote=TRUE)
 
 dd <- rbind( cbind(level="class", as.data.frame(table(dea2$class2))),
              cbind(level="subclass", as.data.frame(table(tolower(dea2$class)))) )
