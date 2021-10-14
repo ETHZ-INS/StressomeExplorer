@@ -3,6 +3,7 @@ library(SummarizedExperiment)
 library(SEtools)
 library(ggplot2)
 library(cowplot)
+library(writexl)
 library(waiter)
 
 data_dir <- "../data"
@@ -152,6 +153,7 @@ output$EDTS <- renderImage({
   output$gene_name_prot <- renderText({input$gene_input})
   output$gene_name_phos <- renderText({input$gene_input})
   output$gene_name_phospep <- renderText({input$gene_input})
+  output$gene_name_download <- renderText({input$gene_input})
 
   output$availability <- renderText({
     snRNAdat <- SEtools::meltSE(SN, input$gene_input, assayName="logcpm")
@@ -437,6 +439,43 @@ output$EDTS <- renderImage({
   })
   ### END LFQ PLOT
   ############
+  
+  ### DOWNLOAD GENE DATA
+  ############
+  
+  get_download_data <- reactive({
+    snRNAdat <- SEtools::meltSE(SN, input$gene_input)
+    out <- lapply(SEs, FUN=function(x){
+      g <- row.names(grepGene(x,input$gene_input))
+      x <- SEtools::meltSE(x,g)
+      x
+    })
+    
+    if(nrow(snRNAdat) > 0){
+      out$snRNA <- snRNAdat
+    }
+    if(sum(rowData(prot)$Genes == input$gene_input, na.rm = T) > 0){
+      out$proteome <- meltSE(prot,rownames(rowData(prot))[rowData(prot)$Genes == input$gene_input])
+    }
+    if(sum(rowData(phos)$GeneSymbol == input$gene_input, na.rm = T) > 0){
+      out$phosphoproteome <- meltSE(phos,rownames(rowData(phos))[rowData(phos)$GeneSymbol == input$gene_input])
+      out$phosphoproteome <- cbind(out$phosphoproteome, data.frame(rowData(phos)[match(out$phosphoproteome$feature,rownames(phos)),]))
+    }
+    
+    return(out)
+  })
+  
+  
+  output$download_gene <- downloadHandler(
+    filename = function() {paste(input$gene_input,"xlsx", sep = ".")},
+    content = function(file) {write_xlsx(get_download_data(), path = file)}
+  )
+  
+  
+  
+  
+  ### END DOWNLOAD GENE DATA
+  ############
 
   output$snrna_plot <- renderPlot({
     # use.assay <- input$snRNA_assay
@@ -490,4 +529,3 @@ output$EDTS <- renderImage({
 
   waiter_hide()
 })
-

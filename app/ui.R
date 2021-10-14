@@ -13,6 +13,7 @@ shinyUI( dashboardPage(
       menuItem("Proteome", tabName="tab_prot"),
       menuItem("Phosphoproteome", tabName="tab_phos"),
       menuItem("Phosphopeptides", tabName="tab_phos_pep"),
+      menuItem("Download Gene Data", tabName="tab_download_gene"),
       tags$div(id="lablink", tags$a(href="https://bohaceklab.ethz.ch/", "bohaceklab.ethz.ch"))
     )
   ),
@@ -98,6 +99,10 @@ shinyUI( dashboardPage(
               box(title = "Peptide Explorer (warning: may be slow if protein has many peptides)", width=12,
                   withSpinner(plotOutput("phospho_pep_plot", width = 1000)),
                   p("missing data points indicate that peptide was not detected in a sample"))
+    ),
+    tabItem("tab_download_gene",
+            column(12,tags$h3(textOutput("gene_name_download"))),
+            box(title = "Download data for gene",downloadButton("download_gene", "Download"))
     ))
   )
 ))
