@@ -1,14 +1,3 @@
----
-title: "Readme"
-output:
-  html_document:
-    keep_md: true
-    theme: united
-    toc: yes
----
-
-
-
 ## How to load and use data
 
 This package contains data in the SummarizedExperiment formant and saved as .Rds files. This data structure contains all assays and metadata. Files can be opened with R, which is a free software. First install R on your system (we recomend through https://www.rstudio.com/products/rstudio/)
