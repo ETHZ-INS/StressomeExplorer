@@ -27,7 +27,8 @@ You can access the count data by using:
 
     countdat <- assays(data)$counts
 
-    #lets inspect the data (top-left 4x4 sub-matrix)
+lets inspect the data (top-left 4x4 sub-matrix)
+
     countdat[1:4,1:4]
 
     ##               TimeSeriesFST_id_1.dHC.Homecage.0min
