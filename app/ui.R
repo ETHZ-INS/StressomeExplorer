@@ -102,7 +102,11 @@ shinyUI( dashboardPage(
     ),
     tabItem("tab_download_gene",
             column(12,tags$h3(textOutput("gene_name_download"))),
-            box(title = "Download data for gene",downloadButton("download_gene", "Download"))
+            box(width = 12, title = "Download data for selected gene",downloadButton("download_gene", "Download")),
+            box(width = 12, title = "Complete Data repositories",
+                tags$a(href="https://github.com/ETHZ-INS/StressomeExplorer/tree/main/Results", "Analysis Results"),
+                tags$br(),tags$br(),
+                tags$a(href = "https://github.com/ETHZ-INS/StressomeExplorer/tree/main/data","Processed data in matrix formats and annotated"))
     ))
   )
 ))
