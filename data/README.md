@@ -115,7 +115,8 @@ To see all the different types of processed data you can use
 
     ## [1] "counts" "logcpm" "tpm"
 
-    #lets access logcpm data instead of count data (top-left 4x4 sub-matrix)
+lets access logcpm data instead of count data (top-left 4x4 sub-matrix)
+
     assays(data)$logcpm[1:4,1:4]
 
     ##               TimeSeriesFST_id_1.dHC.Homecage.0min
@@ -144,7 +145,8 @@ at the phosphodata for example
 
     data_phos <- readRDS("phos/PhosphoData_RMAmbig.SE.rds")
 
-    #lets see the variance stabilized data (top-left 4x4 sub-matrix)
+lets see the variance stabilized data (top-left 4x4 sub-matrix)
+
     assays(data_phos)$vsn[1:4,1:4]
 
     ##                                                                                  Exp2_dHC_SW15_1
