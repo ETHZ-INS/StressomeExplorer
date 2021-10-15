@@ -171,7 +171,8 @@ lets see the variance stabilized data (top-left 4x4 sub-matrix)
     ## _AAAAALSGSPPQT[Phospho_STY_NL_98 (STY)]EKPTHYR_                                               NA
     ## _AAAAAVGPGLGS[Phospho_STY_NL_98 (STY)]GPGDS[Phospho_STY_NL_98 (STY)]PEGPEADAPER_        18.62069
 
-    #lets access further information about each peptide (i.e phosphosites and probabilites)
+lets access further information about each peptide (i.e phosphosites and probabilites)
+
     rowdat <- rowData(data_phos)
     head(rowdat)
 
