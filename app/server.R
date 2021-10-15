@@ -452,6 +452,7 @@ output$EDTS <- renderImage({
     })
     
     if(nrow(snRNAdat) > 0){
+      snRNAdat <- snRNAdat[,!(colnames(snRNAdat) %in% c("isOutlier","scDblFinder.class","scDblFinder.sample","logReadCount","cluster","propCells"))]
       out$snRNA <- snRNAdat
     }
     if(sum(rowData(prot)$Genes == input$gene_input, na.rm = T) > 0){
