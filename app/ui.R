@@ -39,7 +39,7 @@ shinyUI( dashboardPage(
     ),
     tabItems(
       tabItem("tab_gene", column(8,tags$h3(textOutput("gene_name"))),
-        column(4, selectizeInput("gene_input", "Select Gene", choices=c(), multiple=FALSE)),
+        column(4, selectizeInput("gene_input", "Select Gene (Type in Entry!)", choices=c(), multiple=FALSE)),
         column(3, selectizeInput("select_plottype", "Type of Plot", choices=c("violin plot","box plot"), multiple=FALSE)),
         column(2, checkboxInput('select_logaxis','Logarithmic Axis', value=T)),
         column(2, checkboxInput('select_plotpoints','Plot Points', value=T)),
